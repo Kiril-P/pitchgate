@@ -1,0 +1,32 @@
+:root {
+  color: #1c1917;
+  background: #f6f3ee;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 38rem;
+  margin: 4rem auto;
+  padding: 0 1.5rem;
+}
+
+.mark {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 0.8rem;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.status {
+  color: #57534e;
+}
