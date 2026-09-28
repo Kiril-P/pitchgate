@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from flask import Flask, render_template
+from flask import Flask
 
 from pitchgate.db import ensure_database
+from pitchgate.ideas.routes import register_routes
 
 
 def create_app(config):
@@ -12,9 +13,5 @@ def create_app(config):
     app.config["PORT"] = config["PORT"]
 
     ensure_database(app.config["DATABASE"])
-
-    @app.get("/")
-    def home():
-        return render_template("home.html")
-
+    register_routes(app)
     return app

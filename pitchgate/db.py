@@ -10,7 +10,12 @@ def connect(db_path):
 
 
 def ensure_database(db_path):
+    from pitchgate.ideas.store import ensure_schema
+
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = connect(path)
-    connection.close()
+    try:
+        ensure_schema(connection)
+    finally:
+        connection.close()

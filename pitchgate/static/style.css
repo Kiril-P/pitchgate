@@ -30,3 +30,38 @@ h1 {
 .status {
   color: #57534e;
 }
+
+form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 0.9rem;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+textarea {
+  min-height: 4.5rem;
+}
+
+.error {
+  color: #9f1239;
+}
+
+.ideas,
+.revisions {
+  padding-left: 1.2rem;
+}
+
+.ideas a {
+  color: inherit;
+}

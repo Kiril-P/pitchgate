@@ -3,25 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pitchgate</title>
+    <title>{{ idea.display_name }} · Pitchgate</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
     <main>
-      <p class="mark">Pitchgate</p>
-      <h1>A startup idea goes in. A verdict comes out.</h1>
-      <p>Write the idea. Editing it later keeps every earlier version.</p>
+      <p class="mark"><a href="{{ url_for('home') }}">Pitchgate</a></p>
+      <h1>{{ idea.revisions[0].problem }}</h1>
+      <p>{{ idea.display_name }}</p>
 
       <section>
-        <h2>New idea</h2>
+        <h2>Edit</h2>
+        <p>Saving adds a revision. The current text stays in the list below.</p>
         {% if error %}
         <p class="error">{{ error }}</p>
         {% endif %}
-        <form method="post" action="{{ url_for('create') }}">
-          <label>
-            Display name
-            <input name="display_name" maxlength="{{ limits.display_name }}" value="{{ form.display_name }}" required />
-          </label>
+        <form method="post" action="{{ url_for('add_revision', idea_id=idea.id) }}">
           <label>
             Problem
             <textarea name="problem" maxlength="{{ limits.problem }}" required>{{ form.problem }}</textarea>
@@ -34,24 +31,22 @@
             How it would work
             <textarea name="approach" maxlength="{{ limits.approach }}" required>{{ form.approach }}</textarea>
           </label>
-          <button type="submit">Save idea</button>
+          <button type="submit">Save revision</button>
         </form>
       </section>
 
       <section>
-        <h2>Ideas</h2>
-        {% if ideas %}
-        <ul class="ideas">
-          {% for idea in ideas %}
+        <h2>Revisions</h2>
+        <ol class="revisions">
+          {% for revision in idea.revisions %}
           <li>
-            <a href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.latest.problem }}</a>
-            <p>{{ idea.display_name }} · {{ idea.revision_count }} revision{% if idea.revision_count != 1 %}s{% endif %}</p>
+            <p class="status">{% if loop.first %}Current · {% endif %}{{ revision.created_at }}</p>
+            <p><strong>Problem.</strong> {{ revision.problem }}</p>
+            <p><strong>Who it is for.</strong> {{ revision.audience }}</p>
+            <p><strong>How it would work.</strong> {{ revision.approach }}</p>
           </li>
           {% endfor %}
-        </ul>
-        {% else %}
-        <p class="status">No ideas yet.</p>
-        {% endif %}
+        </ol>
       </section>
     </main>
   </body>
