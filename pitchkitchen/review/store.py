@@ -28,25 +28,17 @@ def utc_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def record_verdict(connection, revision, api_key, now=None, transport=None):
-    existing = get_verdict(connection, revision["id"])
+def record_verdict(connection, revision_id, founder_text, api_key, now=None, transport=None):
+    existing = get_verdict(connection, revision_id)
     if existing is not None and existing["label"] != "PENDING":
         return existing
 
     created_at = now or utc_now()
     if not api_key:
-        row = _pending(revision["id"], "missing_key", created_at)
+        row = _pending(revision_id, "missing_key", created_at)
     else:
         try:
-            measured = judge(
-                {
-                    "problem": revision["problem"],
-                    "audience": revision["audience"],
-                    "approach": revision["approach"],
-                },
-                api_key,
-                transport=transport,
-            )
+            measured = judge(founder_text, api_key, transport=transport)
             label, rule = decide(
                 measured["market_need"],
                 measured["feasibility"],
@@ -55,7 +47,7 @@ def record_verdict(connection, revision, api_key, now=None, transport=None):
                 measured["confidence"],
             )
             row = {
-                "revision_id": revision["id"],
+                "revision_id": revision_id,
                 "market_need": measured["market_need"],
                 "feasibility": measured["feasibility"],
                 "differentiation": measured["differentiation"],
@@ -66,11 +58,11 @@ def record_verdict(connection, revision, api_key, now=None, transport=None):
                 "created_at": created_at,
             }
         except JevUnavailable:
-            row = _pending(revision["id"], "request_failed", created_at)
+            row = _pending(revision_id, "request_failed", created_at)
 
     _replace(connection, row)
     connection.commit()
-    return get_verdict(connection, revision["id"])
+    return get_verdict(connection, revision_id)
 
 
 def get_verdict(connection, revision_id):

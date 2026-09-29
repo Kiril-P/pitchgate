@@ -9,8 +9,8 @@
   <body>
     <main>
       <p class="mark">Pitch Kitchen</p>
-      <h1>A startup idea goes in. A verdict comes out.</h1>
-      <p>Write the idea. Each version is scored KILL, FIX, or SHIP. Editing keeps the older text and its verdict.</p>
+      <h1>Bring your idea into the kitchen.</h1>
+      <p>Pitch it in one line, tell the story, then answer for it. Every answer is scored KILL, FIX, or SHIP.</p>
 
       <section>
         <h2>New idea</h2>
@@ -23,18 +23,14 @@
             <input name="display_name" maxlength="{{ limits.display_name }}" value="{{ form.display_name }}" required />
           </label>
           <label>
-            Problem
-            <textarea name="problem" maxlength="{{ limits.problem }}" required>{{ form.problem }}</textarea>
+            One-liner
+            <input name="one_liner" maxlength="{{ limits.one_liner }}" value="{{ form.one_liner }}" placeholder="We help [who] [do what] by [how]" required />
           </label>
           <label>
-            Who it is for
-            <textarea name="audience" maxlength="{{ limits.audience }}" required>{{ form.audience }}</textarea>
+            The story
+            <textarea name="story" maxlength="{{ limits.story }}" placeholder="Why you, why now, what you've seen." required>{{ form.story }}</textarea>
           </label>
-          <label>
-            How it would work
-            <textarea name="approach" maxlength="{{ limits.approach }}" required>{{ form.approach }}</textarea>
-          </label>
-          <button type="submit">Save idea</button>
+          <button type="submit">Send it to the kitchen</button>
         </form>
       </section>
 
@@ -44,10 +40,10 @@
         <ul class="ideas">
           {% for idea in ideas %}
           <li>
-            <a href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.latest.problem }}</a>
+            <a href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.one_liner }}</a>
             <p>
               {{ idea.display_name }}
-              · {{ idea.revision_count }} revision{% if idea.revision_count != 1 %}s{% endif %}
+              · {{ idea.answer_count }} answer{% if idea.answer_count != 1 %}s{% endif %}
               · <span class="verdict verdict-{{ idea.verdict.label|lower if idea.verdict else 'pending' }}">{{ idea.verdict.label if idea.verdict else "UNSCORED" }}</span>
             </p>
           </li>

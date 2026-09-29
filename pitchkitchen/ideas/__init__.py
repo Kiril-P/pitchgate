@@ -1,4 +1,5 @@
-"""Idea domain: the text of a startup idea and each revision of it.
+"""Idea domain: everything the founder wrote, stored as a tree of revisions.
 
-Verdict labels do not belong here. `logic.py` checks the text. `store.py` writes SQLite.
+The pitch is the root. Each answer is a child of the revision before it.
+Verdict labels do not belong here. `logic.py` checks the text and walks branches. `store.py` writes SQLite.
 """

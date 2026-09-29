@@ -61,9 +61,15 @@ def test_parse_answers_rejects_a_broken_payload():
         parse_answers({"answers": {}})
 
 
+TEXT = {"one_liner": "We help X", "story": "Story", "answers": ["First"]}
+
+
+def pitch_id(db):
+    return create_idea(db, "Ada", "We help X", "Story", now="2026-09-29T10:00:00Z")["branch"][0]["id"]
+
+
 def test_missing_key_stores_pending_and_skips_jev():
     db = connection()
-    idea = create_idea(db, "Ada", "Problem", "Students", "An app", now="2026-09-28T10:00:00Z")
     calls = []
 
     def transport(body, api_key):
@@ -72,9 +78,10 @@ def test_missing_key_stores_pending_and_skips_jev():
 
     verdict = record_verdict(
         db,
-        idea["revisions"][0],
+        pitch_id(db),
+        TEXT,
         "",
-        now="2026-09-28T10:00:01Z",
+        now="2026-09-29T10:00:01Z",
         transport=transport,
     )
 
@@ -83,31 +90,41 @@ def test_missing_key_stores_pending_and_skips_jev():
     assert verdict["rule"] == "missing_key"
 
 
-def test_record_verdict_stores_the_rule_that_fired():
+def test_record_verdict_sends_the_founder_text_and_stores_the_rule():
     db = connection()
-    idea = create_idea(db, "Ada", "Problem", "Students", "An app", now="2026-09-28T10:00:00Z")
 
     def transport(body, api_key):
-        assert body["state"]["problem"] == "Problem"
+        assert body["state"] == TEXT
         assert api_key == "test-key"
         return sample_answers(1.2, 2.5, 2.5, 0.1)
 
-    verdict = record_verdict(
-        db,
-        idea["revisions"][0],
-        "test-key",
-        transport=transport,
-    )
+    verdict = record_verdict(db, pitch_id(db), TEXT, "test-key", transport=transport)
 
     assert verdict["label"] == "FIX"
     assert verdict["rule"] == "below_cutoff"
     assert verdict["market_need"] == 1.2
 
 
+def test_a_failed_call_is_pending_and_a_retry_replaces_it():
+    db = connection()
+    revision_id = pitch_id(db)
+
+    def broken(body, api_key):
+        return {"answers": {}}
+
+    def ship(body, api_key):
+        return sample_answers(3, 3, 3, 0.0)
+
+    first = record_verdict(db, revision_id, TEXT, "test-key", transport=broken)
+    second = record_verdict(db, revision_id, TEXT, "test-key", transport=ship)
+
+    assert first["rule"] == "request_failed"
+    assert second["label"] == "SHIP"
+
+
 def test_a_final_verdict_is_not_replaced():
     db = connection()
-    idea = create_idea(db, "Ada", "Problem", "Students", "An app", now="2026-09-28T10:00:00Z")
-    revision = idea["revisions"][0]
+    revision_id = pitch_id(db)
 
     def ship(body, api_key):
         return sample_answers(3, 3, 3, 0.0)
@@ -115,8 +132,8 @@ def test_a_final_verdict_is_not_replaced():
     def kill(body, api_key):
         return sample_answers(3, 3, 3, 0.9)
 
-    first = record_verdict(db, revision, "test-key", transport=ship)
-    second = record_verdict(db, revision, "test-key", transport=kill)
+    first = record_verdict(db, revision_id, TEXT, "test-key", transport=ship)
+    second = record_verdict(db, revision_id, TEXT, "test-key", transport=kill)
 
     assert first["label"] == "SHIP"
     assert second["label"] == "SHIP"

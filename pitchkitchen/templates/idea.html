@@ -9,69 +9,63 @@
   <body>
     <main>
       <p class="mark"><a href="{{ url_for('home') }}">Pitch Kitchen</a></p>
-      {% set current = idea.revisions[0] %}
-      <p class="verdict verdict-{{ current.verdict.label|lower if current.verdict else 'pending' }}">
-        {{ current.verdict.label if current.verdict else "UNSCORED" }}
+      {% set pitch = idea.branch[0] %}
+      {% set head = idea.branch[-1] %}
+      <p class="verdict verdict-{{ head.verdict.label|lower if head.verdict else 'pending' }}">
+        {{ head.verdict.label if head.verdict else "UNSCORED" }}
       </p>
-      <h1>{{ current.problem }}</h1>
+      <h1>{{ pitch.one_liner }}</h1>
       <p>{{ idea.display_name }}</p>
-      {% if current.verdict %}
-      <p>{{ current.verdict.explanation }}</p>
-      {% if current.verdict.market_need is not none %}
+      {% if head.verdict %}
+      <p>{{ head.verdict.explanation }}</p>
+      {% if head.verdict.market_need is not none %}
       <dl class="scores">
-        <div><dt>Market need</dt><dd>{{ "%.1f"|format(current.verdict.market_need) }} / 3</dd></div>
-        <div><dt>Feasibility</dt><dd>{{ "%.1f"|format(current.verdict.feasibility) }} / 3</dd></div>
-        <div><dt>Differentiation</dt><dd>{{ "%.1f"|format(current.verdict.differentiation) }} / 3</dd></div>
-        <div><dt>Safety risk</dt><dd>{{ "%.0f"|format(current.verdict.safety_risk * 100) }}%</dd></div>
-        <div><dt>Confidence</dt><dd>{{ "%.2f"|format(current.verdict.confidence) }}</dd></div>
+        <div><dt>Market need</dt><dd>{{ "%.1f"|format(head.verdict.market_need) }} / 3</dd></div>
+        <div><dt>Feasibility</dt><dd>{{ "%.1f"|format(head.verdict.feasibility) }} / 3</dd></div>
+        <div><dt>Differentiation</dt><dd>{{ "%.1f"|format(head.verdict.differentiation) }} / 3</dd></div>
+        <div><dt>Safety risk</dt><dd>{{ "%.0f"|format(head.verdict.safety_risk * 100) }}%</dd></div>
+        <div><dt>Confidence</dt><dd>{{ "%.2f"|format(head.verdict.confidence) }}</dd></div>
       </dl>
       {% endif %}
       {% endif %}
-      {% if not current.verdict or current.verdict.label == "PENDING" %}
-      <form method="post" action="{{ url_for('score_revision', revision_id=current.id) }}">
-        <button type="submit">Score this revision</button>
+      {% if not head.verdict or head.verdict.label == "PENDING" %}
+      <form method="post" action="{{ url_for('score_revision', revision_id=head.id) }}">
+        <button type="submit">Score this again</button>
       </form>
       {% endif %}
 
       <section>
-        <h2>Edit</h2>
-        <p>Saving adds a revision and scores that new text. The current verdict stays on this version.</p>
-        {% if error %}
-        <p class="error">{{ error }}</p>
-        {% endif %}
-        <form method="post" action="{{ url_for('add_revision', idea_id=idea.id) }}">
-          <label>
-            Problem
-            <textarea name="problem" maxlength="{{ limits.problem }}" required>{{ form.problem }}</textarea>
-          </label>
-          <label>
-            Who it is for
-            <textarea name="audience" maxlength="{{ limits.audience }}" required>{{ form.audience }}</textarea>
-          </label>
-          <label>
-            How it would work
-            <textarea name="approach" maxlength="{{ limits.approach }}" required>{{ form.approach }}</textarea>
-          </label>
-          <button type="submit">Save revision</button>
-        </form>
-      </section>
-
-      <section>
-        <h2>Revisions</h2>
+        <h2>The conversation</h2>
         <ol class="revisions">
-          {% for revision in idea.revisions %}
+          {% for revision in idea.branch %}
           <li>
             <p class="status">
-              {% if loop.first %}Current · {% endif %}
               {{ revision.created_at }}
               · <span class="verdict verdict-{{ revision.verdict.label|lower if revision.verdict else 'pending' }}">{{ revision.verdict.label if revision.verdict else "UNSCORED" }}</span>
             </p>
-            <p><strong>Problem.</strong> {{ revision.problem }}</p>
-            <p><strong>Who it is for.</strong> {{ revision.audience }}</p>
-            <p><strong>How it would work.</strong> {{ revision.approach }}</p>
+            {% if revision.kind == "pitch" %}
+            <p><strong>Pitch.</strong> {{ revision.one_liner }}</p>
+            <p>{{ revision.story }}</p>
+            {% else %}
+            <p><strong>Answer.</strong> {{ revision.answer }}</p>
+            {% endif %}
           </li>
           {% endfor %}
         </ol>
+      </section>
+
+      <section>
+        <h2>Add to it</h2>
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('answer', idea_id=idea.id) }}">
+          <label>
+            Answer
+            <textarea name="answer" maxlength="{{ limits.answer }}" required></textarea>
+          </label>
+          <button type="submit">Send answer</button>
+        </form>
       </section>
     </main>
   </body>

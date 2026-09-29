@@ -1,65 +1,64 @@
 from flask import abort, redirect, render_template, request, url_for
 
 from pitchkitchen.db import connect
-from pitchkitchen.ideas.logic import LIMITS, IdeaNotFound, IdeaTextError
+from pitchkitchen.ideas.logic import LIMITS, IdeaNotFound, IdeaTextError, founder_text
 from pitchkitchen.ideas.store import (
+    add_answer,
     create_idea,
+    get_branch,
     get_idea,
-    get_revision,
     list_ideas,
-    revise_idea,
 )
 from pitchkitchen.review.store import record_verdict, verdicts_for
 
 
 def register_routes(app):
+    def score(connection, branch):
+        record_verdict(
+            connection,
+            branch[-1]["id"],
+            founder_text(branch),
+            app.config.get("TYPESAFE_API_KEY", ""),
+        )
+
+    def render_home(connection, error, form, status=200):
+        ideas = list_ideas(connection)
+        found = verdicts_for(connection, [idea["head_id"] for idea in ideas])
+        for idea in ideas:
+            idea["verdict"] = found.get(idea["head_id"])
+        page = render_template("home.html", ideas=ideas, error=error, form=form, limits=LIMITS)
+        return page, status
+
+    def render_idea(connection, idea, error, status=200):
+        found = verdicts_for(connection, [revision["id"] for revision in idea["branch"]])
+        for revision in idea["branch"]:
+            revision["verdict"] = found.get(revision["id"])
+        page = render_template("idea.html", idea=idea, error=error, limits=LIMITS)
+        return page, status
+
     @app.get("/")
     def home():
         connection = connect(app.config["DATABASE"])
         try:
-            ideas = list_ideas(connection)
-            _attach_latest_verdicts(connection, ideas)
+            return render_home(connection, None, _pitch_form())
         finally:
             connection.close()
-        return render_template(
-            "home.html",
-            ideas=ideas,
-            error=None,
-            form=_blank_form(),
-            limits=LIMITS,
-        )
 
     @app.post("/ideas")
     def create():
-        form = _read_form()
+        form = _pitch_form(request.form)
         connection = connect(app.config["DATABASE"])
         try:
             try:
                 idea = create_idea(
                     connection,
                     form["display_name"],
-                    form["problem"],
-                    form["audience"],
-                    form["approach"],
+                    form["one_liner"],
+                    form["story"],
                 )
             except IdeaTextError as error:
-                ideas = list_ideas(connection)
-                _attach_latest_verdicts(connection, ideas)
-                return (
-                    render_template(
-                        "home.html",
-                        ideas=ideas,
-                        error=error.message,
-                        form=form,
-                        limits=LIMITS,
-                    ),
-                    400,
-                )
-            record_verdict(
-                connection,
-                idea["revisions"][0],
-                app.config.get("TYPESAFE_API_KEY", ""),
-            )
+                return render_home(connection, error.message, form, 400)
+            score(connection, idea["branch"])
         finally:
             connection.close()
         return redirect(url_for("idea_detail", idea_id=idea["id"]))
@@ -69,53 +68,23 @@ def register_routes(app):
         connection = connect(app.config["DATABASE"])
         try:
             idea = get_idea(connection, idea_id)
-            if idea is not None:
-                _attach_revision_verdicts(connection, idea)
+            if idea is None:
+                abort(404)
+            return render_idea(connection, idea, None)
         finally:
             connection.close()
-        if idea is None:
-            abort(404)
-        return render_template(
-            "idea.html",
-            idea=idea,
-            error=None,
-            form=idea["revisions"][0],
-            limits=LIMITS,
-        )
 
-    @app.post("/ideas/<int:idea_id>/revisions")
-    def add_revision(idea_id):
-        form = _read_form()
+    @app.post("/ideas/<int:idea_id>/answers")
+    def answer(idea_id):
         connection = connect(app.config["DATABASE"])
         try:
             try:
-                idea = revise_idea(
-                    connection,
-                    idea_id,
-                    form["problem"],
-                    form["audience"],
-                    form["approach"],
-                )
+                idea = add_answer(connection, idea_id, request.form.get("answer", ""))
             except IdeaNotFound:
                 abort(404)
             except IdeaTextError as error:
-                idea = get_idea(connection, idea_id)
-                _attach_revision_verdicts(connection, idea)
-                return (
-                    render_template(
-                        "idea.html",
-                        idea=idea,
-                        error=error.message,
-                        form=form,
-                        limits=LIMITS,
-                    ),
-                    400,
-                )
-            record_verdict(
-                connection,
-                idea["revisions"][0],
-                app.config.get("TYPESAFE_API_KEY", ""),
-            )
+                return render_idea(connection, get_idea(connection, idea_id), error.message, 400)
+            score(connection, idea["branch"])
         finally:
             connection.close()
         return redirect(url_for("idea_detail", idea_id=idea_id))
@@ -124,47 +93,19 @@ def register_routes(app):
     def score_revision(revision_id):
         connection = connect(app.config["DATABASE"])
         try:
-            revision = get_revision(connection, revision_id)
-            if revision is None:
+            branch = get_branch(connection, revision_id)
+            if branch is None:
                 abort(404)
-            record_verdict(
-                connection,
-                revision,
-                app.config.get("TYPESAFE_API_KEY", ""),
-            )
+            score(connection, branch)
         finally:
             connection.close()
-        return redirect(url_for("idea_detail", idea_id=revision["idea_id"]))
+        return redirect(url_for("idea_detail", idea_id=branch[0]["idea_id"]))
 
 
-def _attach_latest_verdicts(connection, ideas):
-    found = verdicts_for(connection, [idea["latest"]["id"] for idea in ideas])
-    for idea in ideas:
-        idea["verdict"] = found.get(idea["latest"]["id"])
-
-
-def _attach_revision_verdicts(connection, idea):
-    found = verdicts_for(
-        connection,
-        [revision["id"] for revision in idea["revisions"]],
-    )
-    for revision in idea["revisions"]:
-        revision["verdict"] = found.get(revision["id"])
-
-
-def _blank_form():
+def _pitch_form(source=None):
+    source = source or {}
     return {
-        "display_name": "",
-        "problem": "",
-        "audience": "",
-        "approach": "",
-    }
-
-
-def _read_form():
-    return {
-        "display_name": request.form.get("display_name", ""),
-        "problem": request.form.get("problem", ""),
-        "audience": request.form.get("audience", ""),
-        "approach": request.form.get("approach", ""),
+        "display_name": source.get("display_name", ""),
+        "one_liner": source.get("one_liner", ""),
+        "story": source.get("story", ""),
     }
