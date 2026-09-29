@@ -10,12 +10,14 @@ def connect(db_path):
 
 
 def ensure_database(db_path):
-    from pitchgate.ideas.store import ensure_schema
+    from pitchgate.ideas.store import ensure_schema as ensure_ideas
+    from pitchgate.verdicts.store import ensure_schema as ensure_verdicts
 
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = connect(path)
     try:
-        ensure_schema(connection)
+        ensure_ideas(connection)
+        ensure_verdicts(connection)
     finally:
         connection.close()

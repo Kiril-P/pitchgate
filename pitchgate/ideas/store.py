@@ -86,6 +86,27 @@ def list_ideas(connection):
     return [_summary(row) for row in rows]
 
 
+def get_revision(connection, revision_id):
+    row = connection.execute(
+        """
+        SELECT id, idea_id, problem, audience, approach, created_at
+        FROM revisions
+        WHERE id = ?
+        """,
+        (revision_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "idea_id": row["idea_id"],
+        "problem": row["problem"],
+        "audience": row["audience"],
+        "approach": row["approach"],
+        "created_at": row["created_at"],
+    }
+
+
 def get_idea(connection, idea_id):
     idea = connection.execute(
         "SELECT id, display_name, created_at FROM ideas WHERE id = ?",

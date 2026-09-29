@@ -2,7 +2,14 @@ from flask import abort, redirect, render_template, request, url_for
 
 from pitchgate.db import connect
 from pitchgate.ideas.logic import LIMITS, IdeaNotFound, IdeaTextError
-from pitchgate.ideas.store import create_idea, get_idea, list_ideas, revise_idea
+from pitchgate.ideas.store import (
+    create_idea,
+    get_idea,
+    get_revision,
+    list_ideas,
+    revise_idea,
+)
+from pitchgate.verdicts.store import record_verdict, verdicts_for
 
 
 def register_routes(app):
@@ -11,6 +18,7 @@ def register_routes(app):
         connection = connect(app.config["DATABASE"])
         try:
             ideas = list_ideas(connection)
+            _attach_latest_verdicts(connection, ideas)
         finally:
             connection.close()
         return render_template(
@@ -36,6 +44,7 @@ def register_routes(app):
                 )
             except IdeaTextError as error:
                 ideas = list_ideas(connection)
+                _attach_latest_verdicts(connection, ideas)
                 return (
                     render_template(
                         "home.html",
@@ -46,6 +55,11 @@ def register_routes(app):
                     ),
                     400,
                 )
+            record_verdict(
+                connection,
+                idea["revisions"][0],
+                app.config.get("TYPESAFE_API_KEY", ""),
+            )
         finally:
             connection.close()
         return redirect(url_for("idea_detail", idea_id=idea["id"]))
@@ -55,16 +69,17 @@ def register_routes(app):
         connection = connect(app.config["DATABASE"])
         try:
             idea = get_idea(connection, idea_id)
+            if idea is not None:
+                _attach_revision_verdicts(connection, idea)
         finally:
             connection.close()
         if idea is None:
             abort(404)
-        current = idea["revisions"][0]
         return render_template(
             "idea.html",
             idea=idea,
             error=None,
-            form=current,
+            form=idea["revisions"][0],
             limits=LIMITS,
         )
 
@@ -74,7 +89,7 @@ def register_routes(app):
         connection = connect(app.config["DATABASE"])
         try:
             try:
-                revise_idea(
+                idea = revise_idea(
                     connection,
                     idea_id,
                     form["problem"],
@@ -85,6 +100,7 @@ def register_routes(app):
                 abort(404)
             except IdeaTextError as error:
                 idea = get_idea(connection, idea_id)
+                _attach_revision_verdicts(connection, idea)
                 return (
                     render_template(
                         "idea.html",
@@ -95,9 +111,45 @@ def register_routes(app):
                     ),
                     400,
                 )
+            record_verdict(
+                connection,
+                idea["revisions"][0],
+                app.config.get("TYPESAFE_API_KEY", ""),
+            )
         finally:
             connection.close()
         return redirect(url_for("idea_detail", idea_id=idea_id))
+
+    @app.post("/revisions/<int:revision_id>/verdict")
+    def score_revision(revision_id):
+        connection = connect(app.config["DATABASE"])
+        try:
+            revision = get_revision(connection, revision_id)
+            if revision is None:
+                abort(404)
+            record_verdict(
+                connection,
+                revision,
+                app.config.get("TYPESAFE_API_KEY", ""),
+            )
+        finally:
+            connection.close()
+        return redirect(url_for("idea_detail", idea_id=revision["idea_id"]))
+
+
+def _attach_latest_verdicts(connection, ideas):
+    found = verdicts_for(connection, [idea["latest"]["id"] for idea in ideas])
+    for idea in ideas:
+        idea["verdict"] = found.get(idea["latest"]["id"])
+
+
+def _attach_revision_verdicts(connection, idea):
+    found = verdicts_for(
+        connection,
+        [revision["id"] for revision in idea["revisions"]],
+    )
+    for revision in idea["revisions"]:
+        revision["verdict"] = found.get(revision["id"])
 
 
 def _blank_form():

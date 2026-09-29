@@ -65,3 +65,43 @@ textarea {
 .ideas a {
   color: inherit;
 }
+
+.verdict {
+  font-family: "Segoe UI", sans-serif;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+}
+
+p.verdict {
+  font-size: 1.4rem;
+  margin-bottom: 0;
+}
+
+.verdict-kill { color: #9f1239; }
+.verdict-fix { color: #9a3412; }
+.verdict-ship { color: #166534; }
+.verdict-pending,
+.verdict-unscored { color: #57534e; }
+
+.scores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+.scores div {
+  margin: 0;
+}
+
+.scores dt {
+  font-family: "Segoe UI", sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #57534e;
+}
+
+.scores dd {
+  margin: 0;
+}

@@ -8,4 +8,5 @@ def load_config():
         "DATA_DIR": data_dir,
         "DATABASE": data_dir / "pitchgate.sqlite",
         "PORT": int(os.environ.get("PORT", "5000")),
+        "TYPESAFE_API_KEY": os.environ.get("TYPESAFE_API_KEY", ""),
     }

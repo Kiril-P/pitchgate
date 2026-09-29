@@ -9,12 +9,33 @@
   <body>
     <main>
       <p class="mark"><a href="{{ url_for('home') }}">Pitchgate</a></p>
-      <h1>{{ idea.revisions[0].problem }}</h1>
+      {% set current = idea.revisions[0] %}
+      <p class="verdict verdict-{{ current.verdict.label|lower if current.verdict else 'pending' }}">
+        {{ current.verdict.label if current.verdict else "UNSCORED" }}
+      </p>
+      <h1>{{ current.problem }}</h1>
       <p>{{ idea.display_name }}</p>
+      {% if current.verdict %}
+      <p>{{ current.verdict.explanation }}</p>
+      {% if current.verdict.market_need is not none %}
+      <dl class="scores">
+        <div><dt>Market need</dt><dd>{{ "%.1f"|format(current.verdict.market_need) }} / 3</dd></div>
+        <div><dt>Feasibility</dt><dd>{{ "%.1f"|format(current.verdict.feasibility) }} / 3</dd></div>
+        <div><dt>Differentiation</dt><dd>{{ "%.1f"|format(current.verdict.differentiation) }} / 3</dd></div>
+        <div><dt>Safety risk</dt><dd>{{ "%.0f"|format(current.verdict.safety_risk * 100) }}%</dd></div>
+        <div><dt>Confidence</dt><dd>{{ "%.2f"|format(current.verdict.confidence) }}</dd></div>
+      </dl>
+      {% endif %}
+      {% endif %}
+      {% if not current.verdict or current.verdict.label == "PENDING" %}
+      <form method="post" action="{{ url_for('score_revision', revision_id=current.id) }}">
+        <button type="submit">Score this revision</button>
+      </form>
+      {% endif %}
 
       <section>
         <h2>Edit</h2>
-        <p>Saving adds a revision. The current text stays in the list below.</p>
+        <p>Saving adds a revision and scores that new text. The current verdict stays on this version.</p>
         {% if error %}
         <p class="error">{{ error }}</p>
         {% endif %}
@@ -40,7 +61,11 @@
         <ol class="revisions">
           {% for revision in idea.revisions %}
           <li>
-            <p class="status">{% if loop.first %}Current · {% endif %}{{ revision.created_at }}</p>
+            <p class="status">
+              {% if loop.first %}Current · {% endif %}
+              {{ revision.created_at }}
+              · <span class="verdict verdict-{{ revision.verdict.label|lower if revision.verdict else 'pending' }}">{{ revision.verdict.label if revision.verdict else "UNSCORED" }}</span>
+            </p>
             <p><strong>Problem.</strong> {{ revision.problem }}</p>
             <p><strong>Who it is for.</strong> {{ revision.audience }}</p>
             <p><strong>How it would work.</strong> {{ revision.approach }}</p>

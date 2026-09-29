@@ -10,7 +10,7 @@
     <main>
       <p class="mark">Pitchgate</p>
       <h1>A startup idea goes in. A verdict comes out.</h1>
-      <p>Write the idea. Editing it later keeps every earlier version.</p>
+      <p>Write the idea. Each version is scored KILL, FIX, or SHIP. Editing keeps the older text and its verdict.</p>
 
       <section>
         <h2>New idea</h2>
@@ -45,7 +45,11 @@
           {% for idea in ideas %}
           <li>
             <a href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.latest.problem }}</a>
-            <p>{{ idea.display_name }} · {{ idea.revision_count }} revision{% if idea.revision_count != 1 %}s{% endif %}</p>
+            <p>
+              {{ idea.display_name }}
+              · {{ idea.revision_count }} revision{% if idea.revision_count != 1 %}s{% endif %}
+              · <span class="verdict verdict-{{ idea.verdict.label|lower if idea.verdict else 'pending' }}">{{ idea.verdict.label if idea.verdict else "UNSCORED" }}</span>
+            </p>
           </li>
           {% endfor %}
         </ul>
