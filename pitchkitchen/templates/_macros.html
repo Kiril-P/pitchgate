@@ -1,0 +1,30 @@
+{% macro label_of(verdict) -%}
+{{ verdict.label if verdict else "UNSCORED" }}
+{%- endmacro %}
+
+{% macro stamp(verdict, size="") -%}
+<span class="stamp stamp-{{ label_of(verdict)|lower }} {{ size }}">{{ label_of(verdict) }}</span>
+{%- endmacro %}
+
+{% macro chip(verdict) -%}
+<span class="chip chip-{{ label_of(verdict)|lower }}">{{ label_of(verdict) }}</span>
+{%- endmacro %}
+
+{% macro bar(name, value, maximum, cutoff, shown, cutoff_note, invert=False) -%}
+{% set percent = (value / maximum * 100) if value is not none else 0 %}
+{% set passed = (value <= cutoff) if invert else (value >= cutoff) %}
+<div class="bar {{ 'bar-pass' if passed else 'bar-miss' }}">
+  <div class="bar-head">
+    <span>{{ name }}</span>
+    <span class="bar-value">{{ shown }}</span>
+  </div>
+  <div class="bar-track" title="{{ cutoff_note }}">
+    <div class="bar-fill" style="width: {{ percent }}%"></div>
+    <div class="bar-cutoff" style="left: {{ cutoff / maximum * 100 }}%"></div>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro clock(timestamp) -%}
+{{ timestamp[11:16] if timestamp else "" }}
+{%- endmacro %}

@@ -1,58 +1,63 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pitch Kitchen</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-  </head>
-  <body>
-    <main>
-      <p class="mark">Pitch Kitchen</p>
-      <h1>Bring your idea into the kitchen.</h1>
-      <p>Pitch it in one line, tell the story, then answer for it. Every answer is scored KILL, FIX, or SHIP.</p>
+{% extends "base.html" %}
+{% from "_macros.html" import stamp, clock %}
 
-      <section>
-        <h2>New idea</h2>
-        {% if error %}
-        <p class="error">{{ error }}</p>
-        {% endif %}
-        <form method="post" action="{{ url_for('create') }}">
-          <label>
-            Display name
-            <input name="display_name" maxlength="{{ limits.display_name }}" value="{{ form.display_name }}" required />
-          </label>
-          <label>
-            One-liner
-            <input name="one_liner" maxlength="{{ limits.one_liner }}" value="{{ form.one_liner }}" placeholder="We help [who] [do what] by [how]" required />
-          </label>
-          <label>
-            The story
-            <textarea name="story" maxlength="{{ limits.story }}" placeholder="Why you, why now, what you've seen." required>{{ form.story }}</textarea>
-          </label>
-          <button type="submit">Send it to the kitchen</button>
-        </form>
-      </section>
+{% block main_class %}home{% endblock %}
 
-      <section>
-        <h2>Ideas</h2>
-        {% if ideas %}
-        <ul class="ideas">
-          {% for idea in ideas %}
-          <li>
-            <a href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.one_liner }}</a>
-            <p>
-              {{ idea.display_name }}
-              · {{ idea.answer_count }} answer{% if idea.answer_count != 1 %}s{% endif %}
-              · <span class="verdict verdict-{{ idea.verdict.label|lower if idea.verdict else 'pending' }}">{{ idea.verdict.label if idea.verdict else "UNSCORED" }}</span>
-            </p>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="status">No ideas yet.</p>
-        {% endif %}
-      </section>
-    </main>
-  </body>
-</html>
+{% block content %}
+<section class="intro">
+  <div>
+    <h1>Pitch it. Then answer for it.</h1>
+    <p class="lede">Write your idea in one line and tell us where it came from. Every answer you give after that gets scored KILL, FIX, or SHIP.</p>
+  </div>
+
+  <form class="ticket order" method="post" action="{{ url_for('create') }}">
+    <div class="ticket-meta">
+      <span>New order</span>
+      <span>#{{ "%03d"|format(ideas|length + 1) }}</span>
+    </div>
+    {% if error %}
+    <p class="error" role="alert">{{ error }}</p>
+    {% endif %}
+    <label>
+      Display name
+      <input name="display_name" maxlength="{{ limits.display_name }}" value="{{ form.display_name }}" autocomplete="nickname" required />
+    </label>
+    <label>
+      One-liner
+      <input name="one_liner" maxlength="{{ limits.one_liner }}" value="{{ form.one_liner }}" placeholder="We help [who] [do what] by [how]" required />
+    </label>
+    <label>
+      The story
+      <textarea name="story" maxlength="{{ limits.story }}" rows="5" placeholder="Why you, why now, what you've seen." required>{{ form.story }}</textarea>
+    </label>
+    <button class="primary" type="submit">Send it to the kitchen</button>
+  </form>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>On the rail</h2>
+    <p>{{ ideas|length }} ticket{% if ideas|length != 1 %}s{% endif %}</p>
+  </div>
+  {% if ideas %}
+  <div class="rail" aria-hidden="true"></div>
+  <ul class="tickets">
+    {% for idea in ideas %}
+    <li class="ticket card">
+      <div class="ticket-meta">
+        <span>#{{ "%03d"|format(idea.id) }}</span>
+        <span>{{ clock(idea.created_at) }}</span>
+      </div>
+      <a class="card-title" href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.one_liner }}</a>
+      <div class="card-foot">
+        <span>{{ idea.display_name }} · {{ idea.answer_count }} answer{% if idea.answer_count != 1 %}s{% endif %}</span>
+        {{ stamp(idea.verdict) }}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">Nothing on the rail yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
