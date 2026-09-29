@@ -2,8 +2,8 @@ from pathlib import Path
 
 from flask import Flask
 
-from pitchgate.db import ensure_database
-from pitchgate.pages import register_routes
+from pitchkitchen.db import ensure_database
+from pitchkitchen.pages import register_routes
 
 
 def create_app(config):

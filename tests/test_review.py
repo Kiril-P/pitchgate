@@ -2,11 +2,11 @@ import sqlite3
 
 import pytest
 
-from pitchgate.ideas.store import create_idea, ensure_schema as ensure_ideas
-from pitchgate.verdicts.jev import JevUnavailable, parse_answers
-from pitchgate.verdicts.logic import decide
-from pitchgate.verdicts.store import ensure_schema as ensure_verdicts
-from pitchgate.verdicts.store import record_verdict
+from pitchkitchen.ideas.store import create_idea, ensure_schema as ensure_ideas
+from pitchkitchen.review.jev import JevUnavailable, parse_answers
+from pitchkitchen.review.logic import decide
+from pitchkitchen.review.store import ensure_schema as ensure_review
+from pitchkitchen.review.store import record_verdict
 
 
 def connection():
@@ -14,7 +14,7 @@ def connection():
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     ensure_ideas(db)
-    ensure_verdicts(db)
+    ensure_review(db)
     return db
 
 

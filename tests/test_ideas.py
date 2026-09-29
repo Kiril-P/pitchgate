@@ -2,9 +2,9 @@ import sqlite3
 
 import pytest
 
-from pitchgate.ideas.logic import IdeaTextError, clean_field, clean_new_idea
-from pitchgate.ideas.store import create_idea, ensure_schema, get_idea, list_ideas, revise_idea
-from pitchgate.ideas.logic import IdeaNotFound
+from pitchkitchen.ideas.logic import IdeaTextError, clean_field, clean_new_idea
+from pitchkitchen.ideas.store import create_idea, ensure_schema, get_idea, list_ideas, revise_idea
+from pitchkitchen.ideas.logic import IdeaNotFound
 
 
 def connection():

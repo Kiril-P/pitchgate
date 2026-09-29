@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from pitchgate.ideas.logic import IdeaNotFound, clean_new_idea, clean_revision
+from pitchkitchen.ideas.logic import IdeaNotFound, clean_new_idea, clean_revision
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ideas (

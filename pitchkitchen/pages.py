@@ -1,15 +1,15 @@
 from flask import abort, redirect, render_template, request, url_for
 
-from pitchgate.db import connect
-from pitchgate.ideas.logic import LIMITS, IdeaNotFound, IdeaTextError
-from pitchgate.ideas.store import (
+from pitchkitchen.db import connect
+from pitchkitchen.ideas.logic import LIMITS, IdeaNotFound, IdeaTextError
+from pitchkitchen.ideas.store import (
     create_idea,
     get_idea,
     get_revision,
     list_ideas,
     revise_idea,
 )
-from pitchgate.verdicts.store import record_verdict, verdicts_for
+from pitchkitchen.review.store import record_verdict, verdicts_for
 
 
 def register_routes(app):

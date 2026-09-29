@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ idea.display_name }} · Pitchgate</title>
+    <title>{{ idea.display_name }} · Pitch Kitchen</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
     <main>
-      <p class="mark"><a href="{{ url_for('home') }}">Pitchgate</a></p>
+      <p class="mark"><a href="{{ url_for('home') }}">Pitch Kitchen</a></p>
       {% set current = idea.revisions[0] %}
       <p class="verdict verdict-{{ current.verdict.label|lower if current.verdict else 'pending' }}">
         {{ current.verdict.label if current.verdict else "UNSCORED" }}

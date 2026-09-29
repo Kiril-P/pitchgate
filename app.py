@@ -1,5 +1,5 @@
-from pitchgate import create_app
-from pitchgate.config import load_config
+from pitchkitchen import create_app
+from pitchkitchen.config import load_config
 
 config = load_config()
 app = create_app(config)

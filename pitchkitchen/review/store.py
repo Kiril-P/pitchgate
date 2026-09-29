@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from pitchgate.verdicts.jev import JevUnavailable, judge
-from pitchgate.verdicts.logic import decide, explain
+from pitchkitchen.review.jev import JevUnavailable, judge
+from pitchkitchen.review.logic import decide, explain
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS verdicts (
