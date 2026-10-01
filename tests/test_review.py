@@ -8,6 +8,8 @@ from pitchkitchen.review.logic import decide
 from pitchkitchen.review.store import ensure_schema as ensure_review
 from pitchkitchen.review.store import record_verdict
 
+from fakes import jev_scores
+
 
 def connection():
     db = sqlite3.connect(":memory:")
@@ -18,23 +20,17 @@ def connection():
     return db
 
 
-def sample_answers(market, feasibility, differentiation, safety, confidence=0.9):
-    def score(value):
-        return {"type": "score", "score": value, "confidence": confidence}
-
-    return {
-        "answers": {
-            "market_need": score(market),
-            "feasibility": score(feasibility),
-            "differentiation": score(differentiation),
-            "safety_risk": {"type": "noul", "noul": safety},
-        }
-    }
+sample_answers = jev_scores
 
 
 def test_safety_above_cutoff_forces_kill():
     assert decide(3, 3, 3, 0.51, 0.95) == ("KILL", "safety_veto")
     assert decide(3, 3, 3, 0.5, 0.95)[0] == "SHIP"
+
+
+def test_an_average_under_one_point_two_is_kill():
+    assert decide(1.1, 1.1, 0.8, 0.1, 0.9) == ("KILL", "all_weak")
+    assert decide(1.2, 1.2, 1.2, 0.1, 0.9) == ("FIX", "below_cutoff")
 
 
 def test_a_score_under_two_is_fix():
@@ -50,10 +46,18 @@ def test_clear_scores_ship():
 
 
 def test_parse_answers_reads_the_jev_payload():
-    measured = parse_answers(sample_answers(2.2, 1.0, 2.5, 0.2, 0.8))
+    measured = parse_answers(sample_answers(2.2, 2.0, 2.5, 0.2, 0.8))
     assert measured["market_need"] == 2.2
     assert measured["confidence"] == 0.8
     assert measured["safety_risk"] == 0.2
+
+
+def test_confidence_is_the_chance_each_score_is_solid_or_better():
+    payload = sample_answers(2.9, 2.8, 2.2, 0.03)
+    payload["answers"]["differentiation"]["confidence"] = 0.58
+    payload["answers"]["differentiation"]["probabilities"] = {"0": 0.0, "1": 0.09, "2": 0.59, "3": 0.32}
+
+    assert parse_answers(payload)["confidence"] == pytest.approx(0.9)
 
 
 def test_parse_answers_rejects_a_broken_payload():

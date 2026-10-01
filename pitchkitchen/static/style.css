@@ -327,6 +327,30 @@ button {
   margin-bottom: 2rem;
 }
 
+.page-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.page-top .back {
+  margin-bottom: 0;
+}
+
+.link-danger {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+
+.link-danger:hover {
+  color: #e07a7a;
+}
+
 .order-head h1 {
   padding-right: 7rem;
   font-size: clamp(1.5rem, 3.5vw, 1.9rem);
@@ -433,6 +457,122 @@ button {
 
 .bubble-title {
   font-weight: 600;
+}
+
+.message.chef {
+  justify-self: start;
+}
+
+.message.chef .bubble {
+  border-radius: 12px 12px 12px 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.bubble-question {
+  font-weight: 600;
+}
+
+.message-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.bubble-out {
+  display: grid;
+  gap: 0.6rem;
+  border-style: dashed !important;
+}
+
+.muted-ink {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.secondary-ink {
+  justify-self: start;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+}
+
+.typing {
+  display: flex;
+  gap: 0.3rem;
+  padding: 1rem;
+}
+
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: typing 1.2s infinite ease-in-out;
+}
+
+.typing span:nth-child(2) { animation-delay: 0.15s; }
+.typing span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.busy {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.actions form {
+  margin: 0;
+}
+
+.ending {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  padding: 1.25rem;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+.ending p {
+  margin: 0;
+}
+
+.ending-binned h2 { color: #e07a7a; }
+.ending-served h2 { color: #6fbf8c; }
+
+.ending a.primary {
+  text-decoration: none;
+}
+
+.polished {
+  padding: 1rem 1.1rem;
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.board + .board {
+  margin-top: 2.5rem;
+}
+
+.board-binned .card {
+  opacity: 0.75;
 }
 
 .composer {

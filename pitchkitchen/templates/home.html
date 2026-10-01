@@ -7,13 +7,13 @@
 <section class="intro">
   <div>
     <h1>Pitch it. Then answer for it.</h1>
-    <p class="lede">Write your idea in one line and tell us where it came from. Every answer you give after that gets scored KILL, FIX, or SHIP.</p>
+    <p class="lede">Write your idea in one line and tell us where it came from. Chef reads it, Jev scores it KILL, FIX, or SHIP, and you get grilled until it ships or hits the bin.</p>
   </div>
 
   <form class="ticket order" method="post" action="{{ url_for('create') }}">
     <div class="ticket-meta">
       <span>New order</span>
-      <span>#{{ "%03d"|format(ideas|length + 1) }}</span>
+      <span>#{{ "%03d"|format(total + 1) }}</span>
     </div>
     {% if error %}
     <p class="error" role="alert">{{ error }}</p>
@@ -30,22 +30,28 @@
       The story
       <textarea name="story" maxlength="{{ limits.story }}" rows="5" placeholder="Why you, why now, what you've seen." required>{{ form.story }}</textarea>
     </label>
-    <button class="primary" type="submit">Send it to the kitchen</button>
+    <button class="primary" type="submit" data-busy="Chef is reading…">Send it to the kitchen</button>
   </form>
 </section>
 
-<section>
+{% set empty_text = {
+  "kitchen": "Nothing cooking. Send an idea in.",
+  "served": "Nobody has made it out yet.",
+  "binned": "The bin is empty. For now.",
+} %}
+{% for board in boards %}
+<section class="board board-{{ board.key }}">
   <div class="section-head">
-    <h2>On the rail</h2>
-    <p>{{ ideas|length }} ticket{% if ideas|length != 1 %}s{% endif %}</p>
+    <h2>{{ board.title }}</h2>
+    <p>{{ board.ideas|length }} ticket{% if board.ideas|length != 1 %}s{% endif %}</p>
   </div>
-  {% if ideas %}
   <div class="rail" aria-hidden="true"></div>
+  {% if board.ideas %}
   <ul class="tickets">
-    {% for idea in ideas %}
+    {% for idea in board.ideas %}
     <li class="ticket card">
       <div class="ticket-meta">
-        <span>#{{ "%03d"|format(idea.id) }}</span>
+        <span>#{{ "%03d"|format(idea.id) }}{% if idea.status == "parked" %} · parked{% endif %}</span>
         <span>{{ clock(idea.created_at) }}</span>
       </div>
       <a class="card-title" href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.one_liner }}</a>
@@ -57,7 +63,8 @@
     {% endfor %}
   </ul>
   {% else %}
-  <p class="empty">Nothing on the rail yet.</p>
+  <p class="empty">{{ empty_text[board.key] }}</p>
   {% endif %}
 </section>
+{% endfor %}
 {% endblock %}

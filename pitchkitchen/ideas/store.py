@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 
 from pitchkitchen.ideas.logic import (
+    CLOSED,
+    IdeaClosed,
     IdeaNotFound,
     clean_answer,
     clean_pitch,
@@ -12,6 +14,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS ideas (
     id INTEGER PRIMARY KEY,
     display_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'cooking'
+        CHECK (status IN ('cooking', 'parked', 'served', 'binned')),
     created_at TEXT NOT NULL
 );
 
@@ -39,6 +43,11 @@ COLUMNS = "id, idea_id, parent_id, kind, one_liner, story, answer, created_at"
 
 def ensure_schema(connection):
     connection.executescript(SCHEMA)
+    columns = [row["name"] for row in connection.execute("PRAGMA table_info(ideas)")]
+    if "status" not in columns:
+        connection.execute(
+            "ALTER TABLE ideas ADD COLUMN status TEXT NOT NULL DEFAULT 'cooking'"
+        )
     connection.commit()
 
 
@@ -70,6 +79,13 @@ def add_answer(connection, idea_id, answer, now=None):
     if not revisions:
         raise IdeaNotFound()
     text = clean_answer(answer)
+    status = _status_of(connection, idea_id)
+    if status in CLOSED:
+        raise IdeaClosed(status)
+    connection.execute(
+        "UPDATE ideas SET status = 'cooking' WHERE id = ?",
+        (idea_id,),
+    )
     connection.execute(
         """
         INSERT INTO revisions (idea_id, parent_id, kind, answer, created_at)
@@ -81,9 +97,25 @@ def add_answer(connection, idea_id, answer, now=None):
     return get_idea(connection, idea_id)
 
 
+def set_status(connection, idea_id, status):
+    current = _status_of(connection, idea_id)
+    if current is None:
+        raise IdeaNotFound()
+    if current in CLOSED:
+        raise IdeaClosed(current)
+    connection.execute("UPDATE ideas SET status = ? WHERE id = ?", (status, idea_id))
+    connection.commit()
+
+
+def delete_idea(connection, idea_id):
+    connection.execute("DELETE FROM revisions WHERE idea_id = ?", (idea_id,))
+    connection.execute("DELETE FROM ideas WHERE id = ?", (idea_id,))
+    connection.commit()
+
+
 def get_idea(connection, idea_id):
     idea = connection.execute(
-        "SELECT id, display_name, created_at FROM ideas WHERE id = ?",
+        "SELECT id, display_name, status, created_at FROM ideas WHERE id = ?",
         (idea_id,),
     ).fetchone()
     if idea is None:
@@ -92,6 +124,7 @@ def get_idea(connection, idea_id):
     return {
         "id": idea["id"],
         "display_name": idea["display_name"],
+        "status": idea["status"],
         "created_at": idea["created_at"],
         "revisions": revisions,
         "branch": walk_branch(revisions, current_head(revisions)),
@@ -110,7 +143,7 @@ def get_branch(connection, revision_id):
 
 def list_ideas(connection):
     ideas = connection.execute(
-        "SELECT id, display_name, created_at FROM ideas ORDER BY id DESC"
+        "SELECT id, display_name, status, created_at FROM ideas ORDER BY id DESC"
     ).fetchall()
     rows = connection.execute(
         "SELECT " + COLUMNS + " FROM revisions ORDER BY id"
@@ -126,6 +159,7 @@ def list_ideas(connection):
             {
                 "id": idea["id"],
                 "display_name": idea["display_name"],
+                "status": idea["status"],
                 "created_at": idea["created_at"],
                 "one_liner": branch[0]["one_liner"],
                 "answer_count": len(branch) - 1,
@@ -133,6 +167,11 @@ def list_ideas(connection):
             }
         )
     return listed
+
+
+def _status_of(connection, idea_id):
+    row = connection.execute("SELECT status FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    return row["status"] if row else None
 
 
 def _revisions_for(connection, idea_id):

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from pitchkitchen.review.jev import JevUnavailable, judge
-from pitchkitchen.review.logic import decide, explain
+from pitchkitchen.review.logic import decide, explain, focus, recommend
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS verdicts (
@@ -15,6 +15,16 @@ CREATE TABLE IF NOT EXISTS verdicts (
     label TEXT NOT NULL,
     rule TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chef_messages (
+    id INTEGER PRIMARY KEY,
+    revision_id INTEGER NOT NULL REFERENCES revisions(id),
+    kind TEXT NOT NULL CHECK (kind IN ('turn', 'polished')),
+    body TEXT NOT NULL,
+    question TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE (revision_id, kind)
 );
 """
 
@@ -86,6 +96,45 @@ def verdicts_for(connection, revision_ids):
     return {row["revision_id"]: _verdict(row) for row in rows}
 
 
+def save_chef(connection, revision_id, kind, body, question="", now=None):
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO chef_messages (revision_id, kind, body, question, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (revision_id, kind, body, question, now or utc_now()),
+    )
+    connection.commit()
+
+
+def chef_for(connection, revision_ids):
+    """Returns {revision_id: {kind: message}} for the given revisions."""
+    if not revision_ids:
+        return {}
+    marks = ",".join("?" for _ in revision_ids)
+    rows = connection.execute(
+        "SELECT * FROM chef_messages WHERE revision_id IN (" + marks + ")",
+        tuple(revision_ids),
+    ).fetchall()
+    found = {}
+    for row in rows:
+        found.setdefault(row["revision_id"], {})[row["kind"]] = {
+            "body": row["body"],
+            "question": row["question"],
+            "created_at": row["created_at"],
+        }
+    return found
+
+
+def forget(connection, revision_ids):
+    if not revision_ids:
+        return
+    marks = ",".join("?" for _ in revision_ids)
+    connection.execute("DELETE FROM chef_messages WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
+    connection.execute("DELETE FROM verdicts WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
+    connection.commit()
+
+
 def _pending(revision_id, rule, created_at):
     return {
         "revision_id": revision_id,
@@ -127,7 +176,7 @@ def _replace(connection, row):
 
 
 def _verdict(row):
-    return {
+    verdict = {
         "id": row["id"],
         "revision_id": row["revision_id"],
         "market_need": row["market_need"],
@@ -139,4 +188,10 @@ def _verdict(row):
         "rule": row["rule"],
         "explanation": explain(row["rule"]),
         "created_at": row["created_at"],
+        "focus": None,
+        "recommendation": None,
     }
+    if verdict["label"] != "PENDING":
+        verdict["focus"] = focus(verdict)
+        verdict["recommendation"] = recommend(verdict["focus"])
+    return verdict

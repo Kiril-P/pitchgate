@@ -6,14 +6,18 @@
 
 {% block content %}
 {% set pitch = idea.branch[0] %}
-{% set head = idea.branch[-1] %}
 {% set verdict = head.verdict %}
 
-<a class="back" href="{{ url_for('home') }}">All tickets</a>
+<div class="page-top">
+  <a class="back" href="{{ url_for('home') }}">All tickets</a>
+  <form method="post" action="{{ url_for('delete', idea_id=idea.id) }}" data-confirm="Delete this idea and its whole conversation?">
+    <button class="link-danger" type="submit">Delete idea</button>
+  </form>
+</div>
 
 <section class="ticket order-head">
   <div class="ticket-meta">
-    <span>#{{ "%03d"|format(idea.id) }} · {{ idea.display_name }}</span>
+    <span>#{{ "%03d"|format(idea.id) }} · {{ idea.display_name }} · {{ idea.status }}</span>
     <span>{{ clock(idea.created_at) }}</span>
   </div>
   <h1>{{ pitch.one_liner }}</h1>
@@ -39,16 +43,13 @@
   {% else %}
   <p>Not scored yet.</p>
   <p class="muted">{{ verdict.explanation if verdict else "Nothing has been sent to Jev for this version." }}</p>
-  <form method="post" action="{{ url_for('score_revision', revision_id=head.id) }}">
-    <button class="secondary" type="submit">Score this again</button>
-  </form>
   {% endif %}
 </section>
 
 <section>
   <div class="section-head">
     <h2>Conversation</h2>
-    <p>{{ idea.branch|length - 1 }} answer{% if idea.branch|length != 2 %}s{% endif %}</p>
+    <p>{{ idea.branch|length - 1 }} answer{% if idea.branch|length != 2 %}s{% endif %}{% if step == "open" and idea.status not in ("served", "binned") %} · {{ answers_left }} left{% endif %}</p>
   </div>
   <ol class="thread">
     {% for revision in idea.branch %}
@@ -66,18 +67,88 @@
         {% endif %}
       </div>
     </li>
+    {% if revision.chef %}
+    <li class="message chef">
+      <div class="message-meta">
+        <span>Chef · {{ clock(revision.chef.created_at) }}</span>
+      </div>
+      <div class="bubble">
+        <p>{{ revision.chef.body }}</p>
+        {% if revision.chef.question %}
+        <p class="bubble-question">{{ revision.chef.question }}</p>
+        {% endif %}
+      </div>
+      {% if revision.verdict and revision.verdict.recommendation and revision.verdict.label != "SHIP" %}
+      <p class="message-note">{{ revision.verdict.recommendation }}</p>
+      {% endif %}
+    </li>
+    {% endif %}
     {% endfor %}
+
+    {% if paused and idea.status not in ("served", "binned") %}
+    <li class="message chef">
+      <div class="message-meta"><span>Kitchen</span></div>
+      <div class="bubble bubble-out">
+        {% if paused == "jev" %}
+        <p>Jev didn't score this one, so Chef has nothing to shout about yet.</p>
+        <p class="muted-ink">{{ verdict.explanation if verdict else "" }}</p>
+        {% else %}
+        <p>Chef stepped out. Your answer is saved.</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('score_revision', revision_id=head.id) }}">
+          <button class="secondary-ink" type="submit" data-busy="Trying again…">Try again</button>
+        </form>
+      </div>
+    </li>
+    {% endif %}
   </ol>
 
-  <form class="composer" method="post" action="{{ url_for('answer', idea_id=idea.id) }}">
-    {% if error %}
-    <p class="error" role="alert">{{ error }}</p>
+  {% if error %}
+  <p class="error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  {% if idea.status == "binned" %}
+  <div class="ending ending-binned">
+    <h2>Binned.</h2>
+    <p>Two KILLs in a row. This one is off the menu.</p>
+    <a class="primary" href="{{ url_for('home') }}">Start a new idea</a>
+  </div>
+  {% elif idea.status == "served" %}
+  <div class="ending ending-served">
+    <h2>Served.</h2>
+    {% if polished %}
+    <p class="polished">{{ polished.body }}</p>
+    <p class="muted">Written by Chef from your answers. Not scored.</p>
     {% endif %}
-    <label>
-      Your answer
-      <textarea name="answer" maxlength="{{ limits.answer }}" rows="3" placeholder="Numbers, names, things that actually happened." required></textarea>
-    </label>
-    <button class="primary" type="submit">Send</button>
-  </form>
+  </div>
+  {% else %}
+    {% if step == "open" and not paused %}
+    <form class="composer" method="post" action="{{ url_for('answer', idea_id=idea.id) }}">
+      <label>
+        Your answer
+        <textarea name="answer" maxlength="{{ limits.answer }}" rows="3" placeholder="Numbers, names, things that actually happened." required></textarea>
+      </label>
+      <button class="primary" type="submit" data-busy="Chef is reading…">Send</button>
+    </form>
+    {% elif step == "capped" %}
+    <p class="muted">Five answers in. The last verdict stands.</p>
+    {% endif %}
+
+    <div class="actions">
+      {% if verdict and verdict.label == "SHIP" %}
+      <form method="post" action="{{ url_for('serve_idea', idea_id=idea.id) }}">
+        <button class="primary" type="submit" data-busy="Chef is writing…">Save as final</button>
+      </form>
+      {% if step == "open" %}<span class="muted">or keep sharpening above.</span>{% endif %}
+      {% endif %}
+      {% if idea.status == "parked" %}
+      <span class="muted">Parked. Send an answer to pick it back up.</span>
+      {% else %}
+      <form method="post" action="{{ url_for('park', idea_id=idea.id) }}">
+        <button class="secondary" type="submit">Save and stop</button>
+      </form>
+      {% endif %}
+    </div>
+  {% endif %}
 </section>
 {% endblock %}

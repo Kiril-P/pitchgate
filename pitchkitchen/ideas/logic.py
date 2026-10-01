@@ -9,6 +9,16 @@ class IdeaNotFound(Exception):
     pass
 
 
+class IdeaClosed(Exception):
+    def __init__(self, status):
+        super().__init__(status)
+        self.status = status
+
+
+STATUSES = ("cooking", "parked", "served", "binned")
+CLOSED = ("served", "binned")
+
+
 LABELS = {
     "display_name": "Display name",
     "one_liner": "One-liner",

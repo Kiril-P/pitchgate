@@ -15,13 +15,16 @@ python app.py
 
 Open http://localhost:5000.
 
-The process binds to `0.0.0.0`. Configure it with environment variables. A `.env` file is not required.
+The process binds to `0.0.0.0`. Configure it with environment variables. For local runs, copy `.env.example` to `.env` and fill in the keys; the file is git-ignored and optional. Variables set in the shell override it.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `5000` | Port the process listens on |
 | `DATA_DIR` | `data` | Directory for the SQLite file |
 | `TYPESAFE_API_KEY` | empty | Key for the Jev API. Without it, text saves and the verdict stays PENDING |
+| `COACH_API_KEY` | empty | Key for Chef's model. Without it, the verdict shows and Chef's reply waits for a retry |
+| `COACH_URL` | Gemini's OpenAI-compatible endpoint | Any OpenAI-compatible chat completions URL |
+| `COACH_MODEL` | `gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-3.5-flash-lite` | Model Chef uses. A comma-separated list is tried in order when a model is busy |
 
 The database file is `DATA_DIR/pitchkitchen.sqlite`. Startup creates the file and the `ideas`, `revisions`, and `verdicts` tables if they are missing. No login is required.
 

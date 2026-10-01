@@ -1,6 +1,9 @@
 import json
+import logging
 import urllib.error
 import urllib.request
+
+log = logging.getLogger(__name__)
 
 QUESTIONS = {
     "market_need": {
@@ -56,9 +59,9 @@ def parse_answers(payload):
         differentiation = float(answers["differentiation"]["score"])
         safety_risk = float(answers["safety_risk"]["noul"])
         confidence = min(
-            float(answers["market_need"]["confidence"]),
-            float(answers["feasibility"]["confidence"]),
-            float(answers["differentiation"]["confidence"]),
+            _solid_or_better(answers["market_need"]),
+            _solid_or_better(answers["feasibility"]),
+            _solid_or_better(answers["differentiation"]),
         )
     except (KeyError, TypeError, ValueError):
         raise JevUnavailable()
@@ -69,6 +72,12 @@ def parse_answers(payload):
         "safety_risk": safety_risk,
         "confidence": confidence,
     }
+
+
+def _solid_or_better(answer):
+    """Jev's probability that the score is 2 (Solid) or 3 (Strong)."""
+    probabilities = answer["probabilities"]
+    return float(probabilities["2"]) + float(probabilities["3"])
 
 
 def _post(body, api_key):
@@ -82,7 +91,11 @@ def _post(body, api_key):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+    except urllib.error.HTTPError as error:
+        log.warning("Jev request failed: HTTP %s %s", error.code, error.read()[:300])
+        raise JevUnavailable()
+    except (OSError, ValueError) as error:
+        log.warning("Jev request failed: %r", error)
         raise JevUnavailable()
