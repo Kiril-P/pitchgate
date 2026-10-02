@@ -4,9 +4,9 @@ import pytest
 
 from pitchkitchen.ideas.store import create_idea, ensure_schema as ensure_ideas
 from pitchkitchen.review.jev import JevUnavailable, parse_answers
-from pitchkitchen.review.logic import decide
+from pitchkitchen.review.logic import decide, over_budget
 from pitchkitchen.review.store import ensure_schema as ensure_review
-from pitchkitchen.review.store import record_verdict
+from pitchkitchen.review.store import forget, jev_calls_used, record_verdict
 
 from fakes import jev_scores
 
@@ -142,3 +142,66 @@ def test_a_final_verdict_is_not_replaced():
     assert first["label"] == "SHIP"
     assert second["label"] == "SHIP"
     assert second["id"] == first["id"]
+
+
+def test_over_budget_only_when_the_budget_is_used_up():
+    assert not over_budget(9, 10)
+    assert over_budget(10, 10)
+    assert not over_budget(500, None)
+
+
+def test_every_jev_call_is_logged_including_failures():
+    db = connection()
+    revision_id = pitch_id(db)
+
+    def broken(body, api_key):
+        return {"answers": {}}
+
+    def ship(body, api_key):
+        return sample_answers(3, 3, 3, 0.0)
+
+    record_verdict(db, revision_id, TEXT, "test-key", transport=broken, idea_id=1, budget=10)
+    record_verdict(db, revision_id, TEXT, "test-key", transport=ship, idea_id=1, budget=10)
+    record_verdict(db, revision_id, TEXT, "test-key", transport=ship, idea_id=1, budget=10)
+
+    oks = [row["ok"] for row in db.execute("SELECT ok FROM jev_calls ORDER BY id")]
+    assert oks == [0, 1]
+    assert jev_calls_used(db, 1) == 2
+    assert jev_calls_used(db, 2) == 0
+
+
+def test_a_spent_budget_is_pending_and_skips_jev():
+    db = connection()
+    revision_id = pitch_id(db)
+    calls = []
+
+    def broken(body, api_key):
+        calls.append(body)
+        return {"answers": {}}
+
+    record_verdict(db, revision_id, TEXT, "test-key", transport=broken, idea_id=1, budget=1)
+    verdict = record_verdict(db, revision_id, TEXT, "test-key", transport=broken, idea_id=1, budget=1)
+
+    assert len(calls) == 1
+    assert verdict["label"] == "PENDING"
+    assert verdict["rule"] == "over_budget"
+    assert "JEV_BUDGET_PER_IDEA" in verdict["explanation"]
+
+
+def test_a_missing_key_is_not_logged_as_a_call():
+    db = connection()
+    record_verdict(db, pitch_id(db), TEXT, "", idea_id=1, budget=10)
+    assert jev_calls_used(db, 1) == 0
+
+
+def test_forget_removes_the_call_log_with_the_verdicts():
+    db = connection()
+    revision_id = pitch_id(db)
+
+    def ship(body, api_key):
+        return sample_answers(3, 3, 3, 0.0)
+
+    record_verdict(db, revision_id, TEXT, "test-key", transport=ship, idea_id=1, budget=10)
+    forget(db, [revision_id])
+
+    assert jev_calls_used(db, 1) == 0

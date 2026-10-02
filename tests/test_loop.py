@@ -5,13 +5,14 @@ from pitchkitchen import create_app
 from fakes import FIX, KILL, SHIP, FakeChef, FakeJev
 
 
-def make_client(tmp_path, jev, chef):
+def make_client(tmp_path, jev, chef, budget=10):
     app = create_app(
         {
             "DATA_DIR": tmp_path,
             "DATABASE": tmp_path / "pitchkitchen.sqlite",
             "PORT": 5000,
             "TYPESAFE_API_KEY": "jev",
+            "JEV_BUDGET_PER_IDEA": budget,
             "COACH_API_KEY": "chef",
             "JEV_TRANSPORT": jev,
             "CHEF_TRANSPORT": chef,
@@ -125,6 +126,21 @@ def test_deleting_an_idea_removes_its_whole_conversation(tmp_path):
         "SELECT (SELECT COUNT(*) FROM revisions), (SELECT COUNT(*) FROM verdicts), (SELECT COUNT(*) FROM chef_messages)"
     ).fetchone()
     assert rows == (0, 0, 0)
+
+
+def test_an_idea_stops_calling_jev_once_its_budget_is_spent(tmp_path):
+    jev = FakeJev(FIX)
+    client = make_client(tmp_path, jev, FakeChef(), budget=2)
+    location = pitch(client)
+    client.post(location + "/answers", data={"answer": "First"})
+    client.post(location + "/answers", data={"answer": "Second"})
+
+    assert len(jev.calls) == 2
+    page = client.get(location).data
+    assert b"used its whole Jev budget" in page
+
+    pitch(client)
+    assert len(jev.calls) == 3
 
 
 def test_chef_failing_on_the_final_pitch_keeps_the_idea_open(tmp_path):

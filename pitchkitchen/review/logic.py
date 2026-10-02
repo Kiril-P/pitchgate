@@ -45,6 +45,11 @@ def next_step(labels):
     return "open"
 
 
+def over_budget(used, budget):
+    """budget is the most Jev calls one idea may make; None means no limit."""
+    return budget is not None and used >= budget
+
+
 def explain(rule):
     text = {
         "safety_veto": "Safety risk is above the cutoff, so the label is KILL no matter how strong the other scores are.",
@@ -54,6 +59,7 @@ def explain(rule):
         "all_clear": "Every score is at least 2.0 out of 3, safety is at or under 0.5, and Jev is at least 60% sure each score is Solid or better.",
         "missing_key": "No TYPESAFE_API_KEY is set. The revision is saved and the verdict stays pending.",
         "request_failed": "Jev did not return a usable decision. The revision is saved and the verdict stays pending.",
+        "over_budget": "This idea has used its whole Jev budget (JEV_BUDGET_PER_IDEA). The revision is saved and the verdict stays pending.",
     }
     return text[rule]
 
