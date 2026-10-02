@@ -27,9 +27,10 @@
 <section class="panel">
   <div class="section-head">
     <h2>Scorecard</h2>
-    {% if verdict and verdict.confidence is not none %}
-    <p>Confidence {{ "%.2f"|format(verdict.confidence) }}</p>
-    {% endif %}
+    <p>
+      {% if verdict and verdict.confidence is not none %}Confidence {{ "%.2f"|format(verdict.confidence) }} · {% endif %}
+      <span class="budget{% if jev_used >= jev_budget %} budget-spent{% endif %}" title="Jev calls this idea has used, out of JEV_BUDGET_PER_IDEA">Jev {{ jev_used }} / {{ jev_budget }}</span>
+    </p>
   </div>
   {% if verdict and verdict.market_need is not none %}
   <p class="muted">{{ verdict.explanation }}</p>

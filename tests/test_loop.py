@@ -138,9 +138,12 @@ def test_an_idea_stops_calling_jev_once_its_budget_is_spent(tmp_path):
     assert len(jev.calls) == 2
     page = client.get(location).data
     assert b"used its whole Jev budget" in page
+    assert b"Jev 2 / 2" in page
+    assert b"budget-spent" in page
 
-    pitch(client)
+    other = pitch(client)
     assert len(jev.calls) == 3
+    assert b"Jev 1 / 2" in client.get(other).data
 
 
 def test_chef_failing_on_the_final_pitch_keeps_the_idea_open(tmp_path):

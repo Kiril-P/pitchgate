@@ -20,7 +20,7 @@ from pitchkitchen.ideas.store import (
 from pitchkitchen.review.coach import ChefUnavailable
 from pitchkitchen.review.logic import ANSWER_CAP
 from pitchkitchen.review.service import NotServable, run_round, serve, step_for
-from pitchkitchen.review.store import chef_for, forget, verdicts_for
+from pitchkitchen.review.store import chef_for, forget, jev_calls_used, verdicts_for
 
 BOARDS = (
     ("kitchen", "In the kitchen", ("cooking", "parked")),
@@ -88,6 +88,8 @@ def register_routes(app):
             paused=paused,
             polished=chef.get(head["id"], {}).get("polished"),
             answers_left=ANSWER_CAP - (len(ids) - 1),
+            jev_used=jev_calls_used(connection, idea["id"]),
+            jev_budget=app.config["JEV_BUDGET_PER_IDEA"],
             error=error,
             limits=LIMITS,
         )
