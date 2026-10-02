@@ -10,7 +10,7 @@
 
 <div class="page-top">
   <a class="back" href="{{ url_for('home') }}">All tickets</a>
-  <form method="post" action="{{ url_for('delete', idea_id=idea.id) }}" data-confirm="Delete this idea and its whole conversation?">
+  <form method="post" action="{{ url_for('delete', idea_id=idea.id) }}" hx-confirm="Delete this idea and its whole conversation?">
     <button class="link-danger" type="submit">Delete idea</button>
   </form>
 </div>
