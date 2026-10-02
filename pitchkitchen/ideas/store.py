@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from pitchkitchen.ideas.logic import (
+    AFTER_PITCH,
     CLOSED,
     IdeaClosed,
     IdeaNotFound,
@@ -16,6 +17,8 @@ CREATE TABLE IF NOT EXISTS ideas (
     display_name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'cooking'
         CHECK (status IN ('cooking', 'parked', 'served', 'binned')),
+    station TEXT NOT NULL DEFAULT 'grill'
+        CHECK (station IN ('prep', 'grill', 'tasting', 'plating', 'recipe', 'mise', 'takeaway')),
     created_at TEXT NOT NULL
 );
 
@@ -48,6 +51,10 @@ def ensure_schema(connection):
         connection.execute(
             "ALTER TABLE ideas ADD COLUMN status TEXT NOT NULL DEFAULT 'cooking'"
         )
+    if "station" not in columns:
+        connection.execute(
+            "ALTER TABLE ideas ADD COLUMN station TEXT NOT NULL DEFAULT 'grill'"
+        )
     connection.commit()
 
 
@@ -59,8 +66,8 @@ def create_idea(connection, display_name, one_liner, story, now=None):
     text = clean_pitch(display_name, one_liner, story)
     created_at = now or utc_now()
     cursor = connection.execute(
-        "INSERT INTO ideas (display_name, created_at) VALUES (?, ?)",
-        (text["display_name"], created_at),
+        "INSERT INTO ideas (display_name, station, created_at) VALUES (?, ?, ?)",
+        (text["display_name"], AFTER_PITCH, created_at),
     )
     idea_id = cursor.lastrowid
     connection.execute(
@@ -115,7 +122,7 @@ def delete_idea(connection, idea_id):
 
 def get_idea(connection, idea_id):
     idea = connection.execute(
-        "SELECT id, display_name, status, created_at FROM ideas WHERE id = ?",
+        "SELECT id, display_name, status, station, created_at FROM ideas WHERE id = ?",
         (idea_id,),
     ).fetchone()
     if idea is None:
@@ -125,6 +132,7 @@ def get_idea(connection, idea_id):
         "id": idea["id"],
         "display_name": idea["display_name"],
         "status": idea["status"],
+        "station": idea["station"],
         "created_at": idea["created_at"],
         "revisions": revisions,
         "branch": walk_branch(revisions, current_head(revisions)),
@@ -143,7 +151,7 @@ def get_branch(connection, revision_id):
 
 def list_ideas(connection):
     ideas = connection.execute(
-        "SELECT id, display_name, status, created_at FROM ideas ORDER BY id DESC"
+        "SELECT id, display_name, status, station, created_at FROM ideas ORDER BY id DESC"
     ).fetchall()
     rows = connection.execute(
         "SELECT " + COLUMNS + " FROM revisions ORDER BY id"
@@ -160,6 +168,7 @@ def list_ideas(connection):
                 "id": idea["id"],
                 "display_name": idea["display_name"],
                 "status": idea["status"],
+                "station": idea["station"],
                 "created_at": idea["created_at"],
                 "one_liner": branch[0]["one_liner"],
                 "answer_count": len(branch) - 1,
