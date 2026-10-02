@@ -26,11 +26,19 @@ The process binds to `0.0.0.0`. Configure it with environment variables. For loc
 | `COACH_URL` | Gemini's OpenAI-compatible endpoint | Any OpenAI-compatible chat completions URL |
 | `COACH_MODEL` | `gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-3.5-flash-lite` | Model Chef uses. A comma-separated list is tried in order when a model is busy |
 
-The database file is `DATA_DIR/pitchkitchen.sqlite`. Startup creates the file and the `ideas`, `revisions`, and `verdicts` tables if they are missing. No login is required.
+The database file is `DATA_DIR/pitchkitchen.sqlite`. Startup creates the file and the `ideas`, `revisions`, `verdicts`, and `chef_messages` tables if they are missing. No login is required.
 
-An idea starts with a pitch: a one-liner ("We help [who] [do what] by [how]") and a longer story. Each answer is stored as a new revision whose parent is the revision before it. After every save, Jev scores everything the founder has written on that branch.
+An idea starts with a pitch: a one-liner ("We help [who] [do what] by [how]") and a longer story. Each answer is stored as a new revision whose parent is the revision before it. After every save, Jev scores everything the founder has written on that branch, and Chef replies with a roast and one Mom Test question about the weakest score.
 
-Jev returns market need, feasibility, and differentiation on a 0–3 scale, plus a safety-risk probability. The label is decided in `pitchkitchen/review/logic.py`: safety above 0.5 forces KILL, any score under 2.0 is FIX, confidence under 0.6 blocks SHIP, and a clean result is SHIP. A finished label is not replaced.
+Jev returns market need, feasibility, and differentiation on a 0–3 scale, plus a safety-risk probability. The label is decided in `pitchkitchen/review/logic.py`, in this order:
+
+1. Safety risk above 0.5 is KILL.
+2. The three scores averaging under 1.2 is KILL.
+3. Any score under 2.0 is FIX.
+4. Jev less than 60% sure that every score is 2 or 3 is FIX.
+5. Anything else is SHIP.
+
+A finished label is not replaced. Two KILLs in a row bin the idea, and after 5 answers the last verdict stands. A SHIP can be saved as final, and Chef writes the polished pitch. If Jev or Chef is unavailable, the answer is kept and the page offers a retry.
 
 ## Tests
 
@@ -38,13 +46,22 @@ Jev returns market need, feasibility, and differentiation on a 0–3 scale, plus
 pytest --cov=pitchkitchen --cov-report=term-missing
 ```
 
-The target is at least 70% on the core business logic. Idea checks and branch walking are in `tests/test_ideas.py`. Verdict rules are in `tests/test_review.py`. Routes are in `tests/test_app.py`.
+The target is at least 70% on the core business logic. The last run was 63 tests passing at 94% total coverage. Tests never call the network: Jev and Chef are replaced by fakes in `tests/fakes.py`.
+
+- `tests/test_ideas.py`: field checks, branch walking, and idea storage.
+- `tests/test_review.py`: verdict rules, focus, heat, round cap, and verdict storage.
+- `tests/test_chef.py`: Chef's request, reply parsing, and model fallback.
+- `tests/test_service.py`: one full round and saving a SHIP as final.
+- `tests/test_loop.py`: whole interviews through the pages, including every ending.
+- `tests/test_app.py`: routes and form errors.
+- `tests/test_config.py`: environment variables and the optional `.env` file.
 
 ## Layout
 
 - `app.py` starts the process.
-- `pitchkitchen/ideas/` owns everything the founder wrote. `logic.py` checks the fields and walks a branch from the newest revision back to the pitch. `store.py` writes SQLite.
-- `pitchkitchen/review/` owns everything the app says back. `logic.py` applies the cutoffs. `jev.py` calls the scoring model. `store.py` writes SQLite.
+- `pitchkitchen/config.py` reads environment variables. `pitchkitchen/db.py` opens SQLite and creates the tables.
+- `pitchkitchen/ideas/` owns everything the founder wrote. `logic.py` checks the fields and walks a branch from the newest revision back to the pitch. `store.py` writes the ideas and revisions.
+- `pitchkitchen/review/` owns everything the app says back. `logic.py` applies the cutoffs and round rules. `jev.py` calls the scoring model. `coach.py` calls Chef's model. `service.py` runs one round: Jev, then the rules, then Chef. `store.py` writes verdicts and Chef's messages.
 - `pitchkitchen/pages.py` is the only place the two domains are called together.
 - `ADR.md` records design decisions.
 - `AI_USAGE.md` records meaningful AI help.
