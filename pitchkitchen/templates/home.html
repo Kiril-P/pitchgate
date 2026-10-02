@@ -56,7 +56,7 @@
       </div>
       <a class="card-title" href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.one_liner }}</a>
       <div class="card-foot">
-        <span>{{ idea.display_name }} · {{ idea.answer_count }} answer{% if idea.answer_count != 1 %}s{% endif %}</span>
+        <span>{{ idea.display_name }} · {{ idea.station_name }} · {{ idea.answer_count }} answer{% if idea.answer_count != 1 %}s{% endif %}
         {{ stamp(idea.verdict) }}
       </div>
     </li>

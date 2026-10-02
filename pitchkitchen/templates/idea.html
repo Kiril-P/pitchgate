@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import stamp, chip, bar, clock %}
+{% from "_macros.html" import stamp, chip, bar, clock, station_rail %}
 
 {% block title %}{{ idea.display_name }} · Pitch Kitchen{% endblock %}
 {% block main_class %}idea{% endblock %}
@@ -14,6 +14,8 @@
     <button class="link-danger" type="submit">Delete idea</button>
   </form>
 </div>
+
+{{ station_rail(stations) }}
 
 <section class="ticket order-head">
   <div class="ticket-meta">

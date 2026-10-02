@@ -602,7 +602,79 @@ button {
   border-color: var(--accent);
 }
 
+.stations {
+  margin-bottom: 1.5rem;
+}
+
+.stations ol {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.station {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.6rem 0.7rem 0.55rem;
+  border-top: 3px solid var(--line);
+  background: var(--surface);
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+
+.station-number,
+.station-job {
+  color: var(--muted);
+  font: 0.7rem/1.3 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.station-name {
+  font-weight: 600;
+}
+
+.station-done {
+  border-top-color: var(--ship);
+}
+
+.station-done .station-number::after {
+  content: " ✓";
+  color: var(--ship);
+}
+
+.station-current {
+  border-top-color: var(--accent);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.station-current .station-number,
+.station-current .station-job {
+  color: var(--ink-muted);
+}
+
+.station-soon {
+  opacity: 0.45;
+}
+
+.station-soon .station-job {
+  font-style: italic;
+  text-transform: none;
+}
+
 @media (max-width: 760px) {
+  .stations {
+    overflow-x: auto;
+  }
+
+  .stations ol {
+    grid-template-columns: repeat(7, 7.5rem);
+  }
+
   .intro {
     grid-template-columns: 1fr;
     gap: 1.5rem;
