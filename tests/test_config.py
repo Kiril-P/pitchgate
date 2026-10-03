@@ -9,6 +9,12 @@ def test_defaults_without_env_file(tmp_path):
     assert config["PORT"] == 5000
     assert config["DATABASE"] == Path("data") / "pitchkitchen.sqlite"
     assert config["TYPESAFE_API_KEY"] == ""
+    assert config["JEV_BUDGET_PER_IDEA"] == 10
+
+
+def test_jev_budget_reads_from_the_environment(tmp_path):
+    config = load_config({"JEV_BUDGET_PER_IDEA": "3"}, env_file=tmp_path / ".env")
+    assert config["JEV_BUDGET_PER_IDEA"] == 3
 
 
 def test_env_file_fills_in_missing_values(tmp_path):

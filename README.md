@@ -22,11 +22,12 @@ The process binds to `0.0.0.0`. Configure it with environment variables. For loc
 | `PORT` | `5000` | Port the process listens on |
 | `DATA_DIR` | `data` | Directory for the SQLite file |
 | `TYPESAFE_API_KEY` | empty | Key for the Jev API. Without it, text saves and the verdict stays PENDING |
+| `JEV_BUDGET_PER_IDEA` | `10` | Most Jev calls one idea may make, failed calls included. After that, verdicts stay PENDING |
 | `COACH_API_KEY` | empty | Key for Chef's model. Without it, the verdict shows and Chef's reply waits for a retry |
 | `COACH_URL` | Gemini's OpenAI-compatible endpoint | Any OpenAI-compatible chat completions URL |
 | `COACH_MODEL` | `gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-3.5-flash-lite` | Model Chef uses. A comma-separated list is tried in order when a model is busy |
 
-The database file is `DATA_DIR/pitchkitchen.sqlite`. Startup creates the file and the `ideas`, `revisions`, `verdicts`, and `chef_messages` tables if they are missing. No login is required.
+The database file is `DATA_DIR/pitchkitchen.sqlite`. Startup creates the file and the `ideas`, `revisions`, `verdicts`, `chef_messages`, and `jev_calls` tables if they are missing. `jev_calls` logs every Jev request per idea so `JEV_BUDGET_PER_IDEA` can be enforced. No login is required.
 
 An idea starts with a pitch: a one-liner ("We help [who] [do what] by [how]") and a longer story. Each answer is stored as a new revision whose parent is the revision before it. After every save, Jev scores everything the founder has written on that branch, and Chef replies with a roast and one Mom Test question about the weakest score.
 
@@ -61,7 +62,7 @@ The target is at least 70% on the core business logic. The last run was 63 tests
 - `app.py` starts the process.
 - `pitchkitchen/config.py` reads environment variables. `pitchkitchen/db.py` opens SQLite and creates the tables.
 - `pitchkitchen/ideas/` owns everything the founder wrote. `logic.py` checks the fields and walks a branch from the newest revision back to the pitch. `store.py` writes the ideas and revisions.
-- `pitchkitchen/review/` owns everything the app says back. `logic.py` applies the cutoffs and round rules. `jev.py` calls the scoring model. `coach.py` calls Chef's model. `service.py` runs one round: Jev, then the rules, then Chef. `store.py` writes verdicts and Chef's messages.
+- `pitchkitchen/review/` owns everything the app says back. `logic.py` applies the cutoffs and round rules. `jev.py` calls the scoring model. `coach.py` calls Chef's model. `service.py` runs one round: Jev, then the rules, then Chef. `store.py` writes verdicts, Chef's messages, and the Jev call log.
 - `pitchkitchen/pages.py` is the only place the two domains are called together.
 - `ADR.md` records design decisions.
 - `AI_USAGE.md` records meaningful AI help.

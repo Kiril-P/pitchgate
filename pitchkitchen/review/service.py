@@ -7,7 +7,9 @@ class NotServable(Exception):
     pass
 
 
-def run_round(connection, revision_ids, founder_text, settings, jev_transport=None, chef_transport=None):
+def run_round(
+    connection, revision_ids, founder_text, settings, jev_transport=None, chef_transport=None, idea_id=None
+):
     """Scores the newest revision on a branch, then has Chef answer it.
 
     Safe to call again: a finished verdict or Chef turn is never redone.
@@ -15,7 +17,13 @@ def run_round(connection, revision_ids, founder_text, settings, jev_transport=No
     """
     head = revision_ids[-1]
     verdict = record_verdict(
-        connection, head, founder_text, settings["jev_key"], transport=jev_transport
+        connection,
+        head,
+        founder_text,
+        settings["jev_key"],
+        transport=jev_transport,
+        idea_id=idea_id,
+        budget=settings.get("jev_budget"),
     )
     step = step_for(connection, revision_ids)
     if verdict["label"] == "PENDING":

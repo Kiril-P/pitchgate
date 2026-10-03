@@ -199,6 +199,9 @@ button {
 .chip-pending,
 .chip-unscored { color: var(--muted); }
 
+.budget { font-family: var(--mono); }
+.budget-spent { color: var(--kill); }
+
 /* Home */
 
 .intro {

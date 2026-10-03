@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from pitchkitchen.review.jev import JevUnavailable, judge
-from pitchkitchen.review.logic import decide, explain, focus, recommend
+from pitchkitchen.review.logic import decide, explain, focus, over_budget, recommend
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS verdicts (
@@ -26,6 +26,15 @@ CREATE TABLE IF NOT EXISTS chef_messages (
     created_at TEXT NOT NULL,
     UNIQUE (revision_id, kind)
 );
+
+CREATE TABLE IF NOT EXISTS jev_calls (
+    id INTEGER PRIMARY KEY,
+    idea_id INTEGER NOT NULL,
+    revision_id INTEGER NOT NULL REFERENCES revisions(id),
+    purpose TEXT NOT NULL,
+    ok INTEGER NOT NULL CHECK (ok IN (0, 1)),
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -38,7 +47,11 @@ def utc_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def record_verdict(connection, revision_id, founder_text, api_key, now=None, transport=None):
+def record_verdict(
+    connection, revision_id, founder_text, api_key, now=None, transport=None, idea_id=None, budget=None
+):
+    """Scores one revision with Jev. With an idea_id, every call is logged and
+    stops once the idea has used `budget` calls (None means no limit)."""
     existing = get_verdict(connection, revision_id)
     if existing is not None and existing["label"] != "PENDING":
         return existing
@@ -46,9 +59,18 @@ def record_verdict(connection, revision_id, founder_text, api_key, now=None, tra
     created_at = now or utc_now()
     if not api_key:
         row = _pending(revision_id, "missing_key", created_at)
+    elif idea_id is not None and over_budget(jev_calls_used(connection, idea_id), budget):
+        row = _pending(revision_id, "over_budget", created_at)
     else:
         try:
             measured = judge(founder_text, api_key, transport=transport)
+        except JevUnavailable:
+            measured = None
+        if idea_id is not None:
+            _log_call(connection, idea_id, revision_id, measured is not None, created_at)
+        if measured is None:
+            row = _pending(revision_id, "request_failed", created_at)
+        else:
             label, rule = decide(
                 measured["market_need"],
                 measured["feasibility"],
@@ -67,8 +89,6 @@ def record_verdict(connection, revision_id, founder_text, api_key, now=None, tra
                 "rule": rule,
                 "created_at": created_at,
             }
-        except JevUnavailable:
-            row = _pending(revision_id, "request_failed", created_at)
 
     _replace(connection, row)
     connection.commit()
@@ -126,10 +146,29 @@ def chef_for(connection, revision_ids):
     return found
 
 
+def jev_calls_used(connection, idea_id):
+    row = connection.execute(
+        "SELECT COUNT(*) AS used FROM jev_calls WHERE idea_id = ?",
+        (idea_id,),
+    ).fetchone()
+    return row["used"]
+
+
+def _log_call(connection, idea_id, revision_id, ok, created_at):
+    connection.execute(
+        """
+        INSERT INTO jev_calls (idea_id, revision_id, purpose, ok, created_at)
+        VALUES (?, ?, 'verdict', ?, ?)
+        """,
+        (idea_id, revision_id, 1 if ok else 0, created_at),
+    )
+
+
 def forget(connection, revision_ids):
     if not revision_ids:
         return
     marks = ",".join("?" for _ in revision_ids)
+    connection.execute("DELETE FROM jev_calls WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
     connection.execute("DELETE FROM chef_messages WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
     connection.execute("DELETE FROM verdicts WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
     connection.commit()

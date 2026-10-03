@@ -22,7 +22,7 @@ from pitchkitchen.ideas.store import (
 from pitchkitchen.review.coach import ChefUnavailable
 from pitchkitchen.review.logic import ANSWER_CAP
 from pitchkitchen.review.service import NotServable, run_round, serve, step_for
-from pitchkitchen.review.store import chef_for, forget, verdicts_for
+from pitchkitchen.review.store import chef_for, forget, jev_calls_used, verdicts_for
 
 BOARDS = (
     ("kitchen", "In the kitchen", ("cooking", "parked")),
@@ -35,6 +35,7 @@ def register_routes(app):
     def settings():
         return {
             "jev_key": app.config.get("TYPESAFE_API_KEY", ""),
+            "jev_budget": app.config["JEV_BUDGET_PER_IDEA"],
             "chef_key": app.config.get("COACH_API_KEY", ""),
             "chef_model": app.config["COACH_MODEL"],
             "chef_url": app.config["COACH_URL"],
@@ -48,6 +49,7 @@ def register_routes(app):
             settings(),
             jev_transport=app.config.get("JEV_TRANSPORT"),
             chef_transport=app.config.get("CHEF_TRANSPORT"),
+            idea_id=branch[0]["idea_id"],
         )
         if result["step"] == "binned":
             set_status(connection, branch[0]["idea_id"], "binned")
@@ -90,6 +92,8 @@ def register_routes(app):
             paused=paused,
             polished=chef.get(head["id"], {}).get("polished"),
             answers_left=ANSWER_CAP - (len(ids) - 1),
+            jev_used=jev_calls_used(connection, idea["id"]),
+            jev_budget=app.config["JEV_BUDGET_PER_IDEA"],
             error=error,
             limits=LIMITS,
         )
