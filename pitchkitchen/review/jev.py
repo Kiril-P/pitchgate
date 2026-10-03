@@ -5,21 +5,33 @@ import urllib.request
 
 log = logging.getLogger(__name__)
 
+TIMEOUT = 15
+LEVELS = ["None", "Weak", "Solid", "Strong"]
+
 QUESTIONS = {
     "market_need": {
         "type": "score",
         "instructions": "How real is the market need in this startup idea?",
-        "criteria": ["None", "Weak", "Solid", "Strong"],
+        "criteria": LEVELS,
     },
     "feasibility": {
         "type": "score",
         "instructions": "How feasible is this startup idea for a small student team?",
-        "criteria": ["None", "Weak", "Solid", "Strong"],
+        "criteria": LEVELS,
     },
     "differentiation": {
         "type": "score",
         "instructions": "How different is this startup idea from what already exists?",
-        "criteria": ["None", "Weak", "Solid", "Strong"],
+        "criteria": LEVELS,
+    },
+    "evidence": {
+        "type": "score",
+        "instructions": (
+            "In the founder's latest message only, how much is past behaviour with specifics "
+            "(who, when, how many, how much, what they paid) rather than opinions, compliments, "
+            "hypotheticals, or plans?"
+        ),
+        "criteria": LEVELS,
     },
     "safety_risk": {
         "type": "noul",
@@ -31,47 +43,97 @@ QUESTIONS = {
     },
 }
 
+ANSWERED = {
+    "type": "noul",
+    "instructions": "Does the founder's latest answer directly answer latest_question with at least one specific fact?",
+    "criteria": {
+        "true": "Answers the question with a specific fact",
+        "false": "Dodges, changes the subject, or answers with no specifics",
+    },
+}
+
+TASTING_QUESTIONS = {
+    "evidence_strength": {
+        "type": "score",
+        "instructions": (
+            "Across these logged customer conversations, how strong is the evidence that the problem is real: "
+            "past behaviour, named people, and specifics, rather than opinions or compliments?"
+        ),
+        "criteria": LEVELS,
+    },
+    "pain_frequency": {
+        "type": "score",
+        "instructions": "How often and how badly do the people in these conversations have this problem?",
+        "criteria": LEVELS,
+    },
+    "willingness_to_pay": {
+        "type": "score",
+        "instructions": "How much evidence is there that these people already spend money or real time solving this problem today?",
+        "criteria": LEVELS,
+    },
+    "safety_risk": QUESTIONS["safety_risk"],
+}
+
 
 class JevUnavailable(Exception):
     pass
 
 
 def judge(state, api_key, transport=None):
+    """Scores the founder's text. Asks `answered` only when Chef asked a question."""
+    questions = dict(QUESTIONS)
+    if state.get("latest_question"):
+        questions["answered"] = ANSWERED
+    payload = _call(state, questions, api_key, transport)
+    return parse_answers(payload, "answered" in questions)
+
+
+def judge_tasting(state, api_key, transport=None):
+    payload = _call(state, TASTING_QUESTIONS, api_key, transport)
+    return parse_tasting(payload)
+
+
+def _call(state, questions, api_key, transport):
     if not api_key:
         raise JevUnavailable()
-    body = {
-        "model": "jev-latest",
-        "state": state,
-        "questions": QUESTIONS,
-    }
+    body = {"model": "jev-latest", "state": state, "questions": questions}
     if transport is None:
-        payload = _post(body, api_key)
-    else:
-        payload = transport(body, api_key)
-    return parse_answers(payload)
+        return _post(body, api_key)
+    return transport(body, api_key)
 
 
-def parse_answers(payload):
+def parse_answers(payload, with_answered=False):
     try:
         answers = payload["answers"]
-        market_need = float(answers["market_need"]["score"])
-        feasibility = float(answers["feasibility"]["score"])
-        differentiation = float(answers["differentiation"]["score"])
-        safety_risk = float(answers["safety_risk"]["noul"])
-        confidence = min(
-            _solid_or_better(answers["market_need"]),
-            _solid_or_better(answers["feasibility"]),
-            _solid_or_better(answers["differentiation"]),
-        )
+        measured = {
+            "market_need": float(answers["market_need"]["score"]),
+            "feasibility": float(answers["feasibility"]["score"]),
+            "differentiation": float(answers["differentiation"]["score"]),
+            "safety_risk": float(answers["safety_risk"]["noul"]),
+            "confidence": min(
+                _solid_or_better(answers["market_need"]),
+                _solid_or_better(answers["feasibility"]),
+                _solid_or_better(answers["differentiation"]),
+            ),
+            "evidence": float(answers["evidence"]["score"]) if "evidence" in answers else None,
+            "answered": float(answers["answered"]["noul"]) if with_answered else None,
+        }
     except (KeyError, TypeError, ValueError):
         raise JevUnavailable()
-    return {
-        "market_need": market_need,
-        "feasibility": feasibility,
-        "differentiation": differentiation,
-        "safety_risk": safety_risk,
-        "confidence": confidence,
-    }
+    return measured
+
+
+def parse_tasting(payload):
+    try:
+        answers = payload["answers"]
+        return {
+            "evidence_strength": float(answers["evidence_strength"]["score"]),
+            "pain_frequency": float(answers["pain_frequency"]["score"]),
+            "willingness_to_pay": float(answers["willingness_to_pay"]["score"]),
+            "safety_risk": float(answers["safety_risk"]["noul"]),
+        }
+    except (KeyError, TypeError, ValueError):
+        raise JevUnavailable()
 
 
 def _solid_or_better(answer):
@@ -91,7 +153,7 @@ def _post(body, api_key):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         log.warning("Jev request failed: HTTP %s %s", error.code, error.read()[:300])
