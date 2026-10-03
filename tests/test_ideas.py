@@ -8,8 +8,11 @@ from pitchkitchen.ideas.logic import (
     clean_answer,
     clean_field,
     clean_pitch,
+    STATION_KEYS,
     current_head,
     founder_text,
+    rail,
+    station_name,
     walk_branch,
 )
 from pitchkitchen.ideas.store import (
@@ -168,3 +171,54 @@ def test_list_ideas_shows_the_one_liner_and_answer_count():
 def test_get_idea_returns_none_when_missing():
     db = connection()
     assert get_idea(db, 4) is None
+
+
+def test_rail_marks_stations_before_after_and_at_the_current_one():
+    stations = rail("grill")
+
+    assert [s["key"] for s in stations] == list(STATION_KEYS)
+    assert [s["state"] for s in stations[:3]] == ["done", "current", "upcoming"]
+    assert all(s["state"] == "upcoming" for s in stations[2:])
+
+
+def test_rail_starts_and_ends_at_the_right_stations():
+    assert STATION_KEYS[0] == "prep"
+    assert STATION_KEYS[-1] == "takeaway"
+    assert rail("prep")[0]["state"] == "current"
+    assert [s["state"] for s in rail("takeaway")][-2:] == ["done", "current"]
+
+
+def test_rail_rejects_an_unknown_station():
+    with pytest.raises(ValueError):
+        rail("dessert")
+
+
+def test_station_name_is_the_kitchen_name():
+    assert station_name("mise") == "Mise en place"
+
+
+def test_a_new_idea_is_at_the_grill_once_its_pitch_is_saved():
+    db = connection()
+    idea = create_idea(db, "Ada", "We help X", "Story")
+
+    assert idea["station"] == "grill"
+    assert list_ideas(db)[0]["station"] == "grill"
+
+
+def test_schema_rejects_an_unknown_station():
+    db = connection()
+    idea = create_idea(db, "Ada", "We help X", "Story")
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("UPDATE ideas SET station = 'dessert' WHERE id = ?", (idea["id"],))
+
+
+def test_an_old_database_gets_status_and_station_columns():
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("CREATE TABLE ideas (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL, created_at TEXT NOT NULL)")
+    db.execute("INSERT INTO ideas (display_name, created_at) VALUES ('Ada', 'now')")
+
+    ensure_schema(db)
+
+    row = db.execute("SELECT status, station FROM ideas").fetchone()
+    assert (row["status"], row["station"]) == ("cooking", "grill")

@@ -7,6 +7,8 @@ from pitchkitchen.ideas.logic import (
     IdeaNotFound,
     IdeaTextError,
     founder_text,
+    rail,
+    station_name,
 )
 from pitchkitchen.ideas.store import (
     add_answer,
@@ -56,6 +58,7 @@ def register_routes(app):
         found = verdicts_for(connection, [idea["head_id"] for idea in ideas])
         for idea in ideas:
             idea["verdict"] = found.get(idea["head_id"])
+            idea["station_name"] = station_name(idea["station"])
         boards = [
             {"key": key, "title": title, "ideas": [i for i in ideas if i["status"] in statuses]}
             for key, title, statuses in BOARDS
@@ -81,6 +84,7 @@ def register_routes(app):
         page = render_template(
             "idea.html",
             idea=idea,
+            stations=rail(idea["station"]),
             head=head,
             step=step_for(connection, ids),
             paused=paused,

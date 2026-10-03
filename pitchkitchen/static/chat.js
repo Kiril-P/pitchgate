@@ -1,8 +1,10 @@
+// htmx swaps the whole <body> after every form and link (hx-boost in base.html),
+// so these listeners sit on the document and survive each swap.
+
 // Chef takes a few seconds per round. Lock the form and show who is busy.
-document.addEventListener("submit", function (event) {
-  var form = event.target;
-  if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
-    event.preventDefault();
+document.addEventListener("htmx:beforeRequest", function (event) {
+  var form = event.detail.elt;
+  if (form.tagName !== "FORM") {
     return;
   }
   var button = form.querySelector("button[data-busy]");
@@ -34,7 +36,19 @@ document.addEventListener("submit", function (event) {
   thread.lastElementChild.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
-var latest = document.querySelectorAll(".thread .message.chef");
-if (latest.length > 1) {
-  latest[latest.length - 1].scrollIntoView({ block: "center" });
+function showLatestTurn(behavior) {
+  var latest = document.querySelectorAll(".thread .message.chef");
+  if (latest.length > 1) {
+    latest[latest.length - 1].scrollIntoView({ behavior: behavior, block: "center" });
+  } else {
+    window.scrollTo({ top: 0 });
+  }
 }
+
+document.addEventListener("DOMContentLoaded", function () {
+  showLatestTurn("auto");
+});
+
+document.addEventListener("htmx:afterSettle", function () {
+  showLatestTurn("smooth");
+});

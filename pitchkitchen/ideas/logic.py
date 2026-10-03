@@ -18,6 +18,18 @@ class IdeaClosed(Exception):
 STATUSES = ("cooking", "parked", "served", "binned")
 CLOSED = ("served", "binned")
 
+STATIONS = (
+    {"key": "prep", "name": "Prep", "job": "Spark", "built": True},
+    {"key": "grill", "name": "Grill", "job": "Interview", "built": True},
+    {"key": "tasting", "name": "Tasting", "job": "Evidence", "built": False},
+    {"key": "plating", "name": "Plating", "job": "Shape", "built": False},
+    {"key": "recipe", "name": "Recipe", "job": "PRD", "built": False},
+    {"key": "mise", "name": "Mise en place", "job": "Tech plan", "built": False},
+    {"key": "takeaway", "name": "Takeaway", "job": "Handoff", "built": False},
+)
+STATION_KEYS = tuple(station["key"] for station in STATIONS)
+AFTER_PITCH = "grill"
+
 
 LABELS = {
     "display_name": "Display name",
@@ -73,6 +85,25 @@ def walk_branch(revisions, head_id):
         current = by_id.get(current["parent_id"])
     branch.reverse()
     return branch
+
+
+def rail(current):
+    """Every station in order, marked done, current, or upcoming relative to `current`."""
+    position = STATION_KEYS.index(current)
+    stations = []
+    for index, station in enumerate(STATIONS):
+        if index < position:
+            state = "done"
+        elif index == position:
+            state = "current"
+        else:
+            state = "upcoming"
+        stations.append(dict(station, state=state))
+    return stations
+
+
+def station_name(key):
+    return STATIONS[STATION_KEYS.index(key)]["name"]
 
 
 def founder_text(branch):

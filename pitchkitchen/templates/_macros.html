@@ -25,6 +25,20 @@
 </div>
 {%- endmacro %}
 
+{% macro station_rail(stations) -%}
+<nav class="stations" aria-label="Stations">
+  <ol>
+    {% for station in stations %}
+    <li class="station station-{{ station.state }}{% if not station.built %} station-soon{% endif %}"{% if station.state == "current" %} aria-current="step"{% endif %}>
+      <span class="station-number">{{ "%02d"|format(loop.index) }}</span>
+      <span class="station-name">{{ station.name }}</span>
+      <span class="station-job">{{ station.job if station.built else "Coming next" }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</nav>
+{%- endmacro %}
+
 {% macro clock(timestamp) -%}
 {{ timestamp[11:16] if timestamp else "" }}
 {%- endmacro %}
