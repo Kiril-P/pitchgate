@@ -25,14 +25,18 @@
 </div>
 {%- endmacro %}
 
+{% macro band_bar(name, value, shown) -%}
+{{ bar(name, value, 3, 2.0, shown, "Solid or better is needed for PROVEN") }}
+{%- endmacro %}
+
 {% macro station_rail(stations) -%}
 <nav class="stations" aria-label="Stations">
   <ol>
     {% for station in stations %}
-    <li class="station station-{{ station.state }}{% if not station.built %} station-soon{% endif %}"{% if station.state == "current" %} aria-current="step"{% endif %}>
+    <li class="station station-{{ station.state }}"{% if station.state == "current" %} aria-current="step"{% endif %}>
       <span class="station-number">{{ "%02d"|format(loop.index) }}</span>
       <span class="station-name">{{ station.name }}</span>
-      <span class="station-job">{{ station.job if station.built else "Coming next" }}</span>
+      <span class="station-job">{{ station.job }}</span>
     </li>
     {% endfor %}
   </ol>
@@ -41,4 +45,22 @@
 
 {% macro clock(timestamp) -%}
 {{ timestamp[11:16] if timestamp else "" }}
+{%- endmacro %}
+
+{% macro card(idea) -%}
+<li class="ticket card">
+  <div class="ticket-meta">
+    <span>#{{ "%03d"|format(idea.id) }}{% if idea.status == "parked" %} · parked{% endif %}{% if idea.shared %} · shared{% endif %}</span>
+    <span>{{ day(idea.created_at) }}</span>
+  </div>
+  <a class="card-title" href="{{ url_for('idea_detail', token=idea.token) }}">{{ idea.one_liner }}</a>
+  <div class="card-foot">
+    <span>{{ idea.display_name }} · {{ idea.station_name }} · {{ idea.evidence_count }} log{% if idea.evidence_count != 1 %}s{% endif %}</span>
+    {{ stamp(idea.verdict) }}
+  </div>
+</li>
+{%- endmacro %}
+
+{% macro day(timestamp) -%}
+{{ timestamp[:10] if timestamp else "" }}
 {%- endmacro %}

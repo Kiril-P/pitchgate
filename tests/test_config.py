@@ -10,6 +10,7 @@ def test_defaults_without_env_file(tmp_path):
     assert config["DATABASE"] == Path("data") / "pitchkitchen.sqlite"
     assert config["TYPESAFE_API_KEY"] == ""
     assert config["JEV_BUDGET_PER_IDEA"] == 10
+    assert config["ORGANIZER_KEY"] == ""
 
 
 def test_jev_budget_reads_from_the_environment(tmp_path):
