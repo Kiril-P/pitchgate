@@ -1,0 +1,8 @@
+{% if error %}
+<p class="error">{{ error }}</p>
+{% else %}
+<p class="fine">Pick one to use it, then edit it if you like.</p>
+{% for suggestion in suggestions %}
+<button class="suggestion" type="button" data-fill="{{ suggestion }}">{{ suggestion }}</button>
+{% endfor %}
+{% endif %}

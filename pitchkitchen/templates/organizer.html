@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_macros.html" import stamp %}
+
+{% block title %}Organizer · Pitch Kitchen{% endblock %}
+{% block main_class %}organizer{% endblock %}
+
+{% block content %}
+{% if locked %}
+<section class="panel narrow">
+  <h1>Organizer view</h1>
+  <p class="muted">Enter the organizer key to see the whole cohort.</p>
+  {% if wrong %}<p class="error" role="alert">That key is not right.</p>{% endif %}
+  <form class="key-form" method="get" action="{{ url_for('organizer') }}" hx-boost="false">
+    <input name="key" type="password" autocomplete="current-password" required />
+    <button class="primary" type="submit">Open</button>
+  </form>
+</section>
+{% else %}
+<div class="section-head">
+  <h1>Cohort</h1>
+  <p>As of {{ today.isoformat() }}</p>
+</div>
+
+<section class="metrics">
+  <div class="metric"><span class="metric-value">{{ metrics.ideas }}</span><span class="metric-name">Ideas from {{ metrics.founders }} founder{% if metrics.founders != 1 %}s{% endif %}</span></div>
+  <div class="metric"><span class="metric-value">{{ metrics.active_this_week }}</span><span class="metric-name">Active in the last 7 days</span></div>
+  <div class="metric"><span class="metric-value">{{ metrics.answers_per_idea }}</span><span class="metric-name">Answers per idea</span></div>
+  <div class="metric"><span class="metric-value">{{ "%d%%"|format(metrics.reached_tasting * 100) }}</span><span class="metric-name">Talked to real people</span></div>
+  <div class="metric"><span class="metric-value">{{ "%d%%"|format(metrics.returning_founders * 100) }}</span><span class="metric-name">Founders who came back another day</span></div>
+  <div class="metric{% if metrics.stuck %} metric-alert{% endif %}"><span class="metric-value">{{ metrics.stuck }}</span><span class="metric-name">Stuck 7+ days</span></div>
+</section>
+
+<section class="panel">
+  <h2>Funnel</h2>
+  {% set top = metrics.funnel[0][1] or 1 %}
+  <div class="funnel">
+    {% for name, count in metrics.funnel %}
+    <div class="funnel-row">
+      <span>{{ name }}</span>
+      <div class="bar-track"><div class="bar-fill funnel-fill" style="width: {{ count / top * 100 }}%"></div></div>
+      <span class="bar-value">{{ count }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Who needs a nudge</h2>
+    <p>Stuck first, then longest idle</p>
+  </div>
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="cohort-table">
+      <thead>
+        <tr><th>Founder</th><th>Idea</th><th>Station</th><th>Verdict</th><th>Trend</th><th>Answers</th><th>Logs</th><th>Gates</th><th>Last active</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr{% if row.stuck %} class="row-stuck"{% endif %}>
+          <td>{{ row.display_name }}</td>
+          <td><a href="{{ url_for('idea_detail', token=row.token) }}">{{ row.one_liner }}</a></td>
+          <td>{{ row.station_name }}{% if row.status in ("parked", "served", "binned") %} · {{ row.status }}{% endif %}</td>
+          <td>{{ stamp({"label": row.label}) }}</td>
+          <td class="trend trend-{{ row.trend }}">{{ {"up": "Improving", "down": "Slipping", "flat": "Flat", "none": "–"}[row.trend] }}</td>
+          <td>{{ row.answers }}</td>
+          <td>{{ row.logs }}</td>
+          <td>{{ row.gates_passed }}</td>
+          <td>{{ row.last_activity }}{% if row.stuck %} · {{ row.days_idle }}d idle{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No ideas yet.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

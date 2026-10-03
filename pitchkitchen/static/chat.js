@@ -36,6 +36,17 @@ document.addEventListener("htmx:beforeRequest", function (event) {
   thread.lastElementChild.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
+// Prep: clicking one of Chef's suggested one-liners puts it in the field to edit.
+document.addEventListener("click", function (event) {
+  var choice = event.target.closest("[data-fill]");
+  if (!choice) {
+    return;
+  }
+  var input = document.getElementById("one-liner");
+  input.value = choice.dataset.fill;
+  input.focus();
+});
+
 function showLatestTurn(behavior) {
   var latest = document.querySelectorAll(".thread .message.chef");
   if (latest.length > 1) {

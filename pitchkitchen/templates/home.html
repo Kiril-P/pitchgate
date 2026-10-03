@@ -1,20 +1,30 @@
 {% extends "base.html" %}
-{% from "_macros.html" import stamp, clock %}
+{% from "_macros.html" import card %}
 
 {% block main_class %}home{% endblock %}
 
 {% block content %}
 <section class="intro">
   <div>
-    <h1>Pitch it. Then answer for it.</h1>
-    <p class="lede">Write your idea in one line and tell us where it came from. Chef reads it, Jev scores it KILL, FIX, or SHIP, and you get grilled until it ships or hits the bin.</p>
+    <h1>Pitch it. Then prove it.</h1>
+    <p class="lede">Write your idea in one line. Chef interviews you on what has already happened, not what you hope will. Between sessions you go talk to real people and log what they said. An idea is served when the evidence backs it.</p>
+    <ol class="how">
+      <li><strong>Prep.</strong> Pitch in one line and tell the story.</li>
+      <li><strong>Grill.</strong> Five questions per session, about facts, not plans.</li>
+      <li><strong>Tasting.</strong> Log 3 to 5 real conversations to unlock the next session.</li>
+      <li><strong>Served.</strong> A pitch built only from your evidence, plus next steps.</li>
+    </ol>
   </div>
 
   <form class="ticket order" method="post" action="{{ url_for('create') }}">
     <div class="ticket-meta">
-      <span>New order</span>
-      <span>#{{ "%03d"|format(total + 1) }}</span>
+      <span>{% if form.pivot %}Pivot{% else %}New order{% endif %}</span>
+      <span>Prep</span>
     </div>
+    {% if form.pivot %}
+    <p class="pivot-note">Pivoting from “{{ form.pivot_title }}”. The old idea stays as it is.</p>
+    <input type="hidden" name="pivot" value="{{ form.pivot }}" />
+    {% endif %}
     {% if error %}
     <p class="error" role="alert">{{ error }}</p>
     {% endif %}
@@ -23,22 +33,46 @@
       <input name="display_name" maxlength="{{ limits.display_name }}" value="{{ form.display_name }}" autocomplete="nickname" required />
     </label>
     <label>
-      One-liner
-      <input name="one_liner" maxlength="{{ limits.one_liner }}" value="{{ form.one_liner }}" placeholder="We help [who] [do what] by [how]" required />
+      The story
+      <textarea name="story" maxlength="{{ limits.story }}" rows="5" placeholder="Who has the problem, what you've seen happen, and why you." required>{{ form.story }}</textarea>
     </label>
     <label>
-      The story
-      <textarea name="story" maxlength="{{ limits.story }}" rows="5" placeholder="Why you, why now, what you've seen." required>{{ form.story }}</textarea>
+      One-liner
+      <input id="one-liner" name="one_liner" maxlength="{{ limits.one_liner }}" value="{{ form.one_liner }}" placeholder="We help [who] [do what] by [how]" required />
+    </label>
+    {% if can_suggest %}
+    <div class="suggest">
+      <button class="secondary-paper" type="button" hx-post="{{ url_for('suggest') }}" hx-include="closest form" hx-target="#suggestions" hx-swap="innerHTML" hx-indicator="#suggestions">Suggest one-liners from my story</button>
+      <div id="suggestions" class="suggestions" aria-live="polite"></div>
+    </div>
+    {% endif %}
+    <label>
+      Chef's tone
+      <select name="tone">
+        {% for tone in tones %}
+        <option value="{{ tone }}"{% if form.tone == tone %} selected{% endif %}>{{ {"supportive": "Supportive mentor", "tough": "Tough but professional", "ramsay": "Full Ramsay (swearing)"}[tone] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="shared"{% if form.shared %} checked{% endif %} />
+      <span>Show it on the cohort board so other founders can read it</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="consent"{% if form.consent %} checked{% endif %} required />
+      <span>I agree that my text is sent to Google Gemini and Typesafe (Jev) to be scored, and that the lab organizers can read it.</span>
     </label>
     <button class="primary" type="submit" data-busy="Chef is reading…">Send it to the kitchen</button>
+    <p class="fine">Your idea gets a private link. Ideas you create in this browser are listed below; keep the link to open it elsewhere.</p>
   </form>
 </section>
 
 {% set empty_text = {
   "kitchen": "Nothing cooking. Send an idea in.",
-  "served": "Nobody has made it out yet.",
-  "binned": "The bin is empty. For now.",
+  "served": "Nothing served yet.",
+  "binned": "The bin is empty.",
 } %}
+<h2 class="area-title">Your ideas</h2>
 {% for board in boards %}
 <section class="board board-{{ board.key }}">
   <div class="section-head">
@@ -49,17 +83,7 @@
   {% if board.ideas %}
   <ul class="tickets">
     {% for idea in board.ideas %}
-    <li class="ticket card">
-      <div class="ticket-meta">
-        <span>#{{ "%03d"|format(idea.id) }}{% if idea.status == "parked" %} · parked{% endif %}</span>
-        <span>{{ clock(idea.created_at) }}</span>
-      </div>
-      <a class="card-title" href="{{ url_for('idea_detail', idea_id=idea.id) }}">{{ idea.one_liner }}</a>
-      <div class="card-foot">
-        <span>{{ idea.display_name }} · {{ idea.station_name }} · {{ idea.answer_count }} answer{% if idea.answer_count != 1 %}s{% endif %}
-        {{ stamp(idea.verdict) }}
-      </div>
-    </li>
+    {{ card(idea) }}
     {% endfor %}
   </ul>
   {% else %}
@@ -67,4 +91,21 @@
   {% endif %}
 </section>
 {% endfor %}
+
+<section class="board board-cohort">
+  <div class="section-head">
+    <h2>Cohort board</h2>
+    <p>Ideas other founders chose to share</p>
+  </div>
+  <div class="rail" aria-hidden="true"></div>
+  {% if cohort %}
+  <ul class="tickets">
+    {% for idea in cohort %}
+    {{ card(idea) }}
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">Nobody has shared an idea yet.</p>
+  {% endif %}
+</section>
 {% endblock %}
