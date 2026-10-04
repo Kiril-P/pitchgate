@@ -62,7 +62,7 @@ Two UNPROVEN answers in a row inside a session bin the idea, but only after a pa
 pytest --cov=pitchkitchen --cov-report=term-missing
 ```
 
-The target is at least 70% on the core business logic. The last run was 137 tests passing at 97% total coverage. Tests never call the network: Jev, Chef, and the web search are replaced by fakes in `tests/fakes.py`.
+The target is at least 70% on the core business logic. The last run was 138 tests passing at 97% total coverage. Tests never call the network: Jev, Chef, and the web search are replaced by fakes in `tests/fakes.py`.
 
 - `tests/test_ideas.py`: field and evidence checks, branch walking, sibling edits, tokens, pivots, storage and migration.
 - `tests/test_review.py`: verdict and gate rules, bands, Jev parsing, budget and retry cap, verdict and gate storage, label migration.
