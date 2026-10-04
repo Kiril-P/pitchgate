@@ -30,6 +30,14 @@ def test_a_draft_pack_copies_the_evidence_from_the_logs():
     assert "```text\nBuild a small Flask app where students list textbooks for next term's courses.\n```" in text
 
 
+def test_a_log_that_already_ends_in_a_full_stop_gets_only_one():
+    talk = dict(TALK, today_they="Posts in WhatsApp.", paid="Lost 70 euros.")
+    text = render_pack("We help X", "Ada", [talk], PACK, False, "2026-10-04")
+
+    assert "Does today: Posts in WhatsApp. Pays today: Lost 70 euros." in text
+    assert ".." not in text
+
+
 def test_a_verified_pack_says_so_and_an_empty_log_says_none():
     assert "**Verified.** Served on Pitch Kitchen with 1 logged conversations" in render_pack("We help X", "Ada", [TALK], PACK, True, "2026-10-04")
 

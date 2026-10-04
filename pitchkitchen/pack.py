@@ -75,9 +75,9 @@ def claude_md(one_liner, plan):
 def _talk(entry):
     line = '- **%s**%s, %s: "%s"' % (entry["who"], ", " + entry["role"] if entry["role"] else "", entry["spoken_on"], entry["quote"])
     if entry.get("today_they"):
-        line += " Does today: " + entry["today_they"] + "."
+        line += " Does today: " + entry["today_they"].rstrip(".") + "."
     if entry.get("paid"):
-        line += " Pays today: " + entry["paid"] + "."
+        line += " Pays today: " + entry["paid"].rstrip(".") + "."
     return line
 
 
