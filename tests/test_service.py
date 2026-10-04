@@ -4,8 +4,17 @@ import pytest
 
 from pitchkitchen.ideas.logic import founder_text
 from pitchkitchen.ideas.store import add_answer, add_evidence, create_idea, ensure_schema as ensure_ideas, evidence_for
-from pitchkitchen.review.service import GateNotReady, NotServable, gate_status, run_gate, run_round, serve, sessions_for
-from pitchkitchen.review.store import chef_for, ensure_schema as ensure_review, latest_homework
+from pitchkitchen.review.service import (
+    GateNotReady,
+    NotServable,
+    gate_status,
+    run_gate,
+    run_round,
+    serve,
+    sessions_for,
+    write_pack,
+)
+from pitchkitchen.review.store import chef_for, ensure_schema as ensure_review, latest_homework, latest_of
 
 from fakes import GATE_FAIL, PARTIAL, PROVEN, UNPROVEN, FakeChef, FakeJev
 
@@ -31,9 +40,14 @@ def play(db, idea, jev, chef, settings=SETTINGS):
     return run_round(db, ids, text_of(db, idea), settings, jev_transport=jev, chef_transport=chef, idea_id=idea["id"])
 
 
-def log(db, idea, count, session=1):
+def log(db, idea, count, session=1, kind="conversation"):
     for number in range(count):
-        add_evidence(db, idea["id"], session, {"who": "P%d" % number, "spoken_on": "2026-10-01", "quote": "q"})
+        add_evidence(
+            db,
+            idea["id"],
+            session,
+            {"kind": kind, "who": "P%d" % number, "spoken_on": "2026-10-01", "quote": "q", "source": "https://p.example"},
+        )
 
 
 def test_a_round_scores_then_chef_answers(db):
@@ -150,3 +164,39 @@ def test_serving_needs_proven_and_three_logs(db):
     stored = chef_for(db, ids)[ids[0]]
     assert stored["polished"]["body"] == "We help students sell textbooks."
     assert stored["next_steps"]["body"] == ["Run a stall", "Email the union"]
+
+
+def test_facts_alone_cannot_serve_an_idea(db):
+    idea = create_idea(db, "Ada", "We help X", "Story")
+    ids = [idea["branch"][0]["id"]]
+    play(db, idea, FakeJev(PROVEN), FakeChef())
+    log(db, idea, 3, kind="fact")
+    with pytest.raises(NotServable):
+        serve(db, ids, text_of(db, idea), SETTINGS, chef_transport=FakeChef())
+
+    log(db, idea, 3)
+    assert serve(db, ids, text_of(db, idea), SETTINGS, chef_transport=FakeChef())["pitch"]
+
+
+def test_a_starter_gate_passes_weak_facts_and_the_bars_still_show(db):
+    idea = create_idea(db, "Ada", "We help X", "Story", level="new")
+    log(db, idea, 3, kind="fact")
+    head = idea["branch"][-1]["id"]
+    gate = run_gate(db, idea["id"], head, text_of(db, idea), SETTINGS, jev_transport=FakeJev(tasting=GATE_FAIL), starter=True)
+    assert (gate["label"], gate["rule"]) == ("PASSED", "gate_starter")
+    assert gate["evidence_strength"] == 1.0
+
+
+def test_a_starter_pack_is_stored_with_what_it_was_written_from(db):
+    idea = create_idea(db, "Ada", "We help X", "Story")
+    log(db, idea, 2)
+    ids = [revision["id"] for revision in idea["branch"]]
+    chef = FakeChef()
+
+    write_pack(db, ids, text_of(db, idea), SETTINGS, verified=False, chef_transport=chef)
+
+    stored = latest_of(db, ids, "starter_pack")
+    assert stored["revision_id"] == ids[-1]
+    assert (stored["body"]["verified"], stored["body"]["logs"]) == (False, 2)
+    assert stored["body"]["tasks"] == ["Create the Flask app", "Add the books table"]
+    assert "P0 (n/a)" in chef.calls[0]["messages"][0]["content"]

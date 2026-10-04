@@ -4,7 +4,7 @@ import pytest
 
 from pitchkitchen.ideas.store import create_idea, ensure_schema as ensure_ideas
 from pitchkitchen.review.jev import JevUnavailable, judge, parse_answers, parse_tasting
-from pitchkitchen.review.logic import band, can_serve, decide, decide_tasting, gate_ready, over_budget
+from pitchkitchen.review.logic import band, can_serve, decide, decide_tasting, explain_verdict, gate_ready, over_budget, starter_gate
 from pitchkitchen.review.store import ensure_schema as ensure_review
 from pitchkitchen.review.store import forget, gates_for, gates_passed, jev_calls_used, record_gate, record_verdict
 
@@ -289,4 +289,22 @@ def test_an_old_database_gets_new_labels_and_chef_kinds():
 
     assert [r["label"] for r in db.execute("SELECT label FROM verdicts ORDER BY id")] == ["PROVEN", "UNPROVEN"]
     db.execute("INSERT INTO chef_messages (revision_id, kind, body, created_at) VALUES (1, 'homework', '{}', 'now')")
-    assert db.execute("SELECT COUNT(*) FROM chef_messages").fetchone()[0] == 2
+    db.execute("INSERT INTO chef_messages (revision_id, kind, body, created_at) VALUES (1, 'starter_pack', '{}', 'now')")
+    assert db.execute("SELECT COUNT(*) FROM chef_messages").fetchone()[0] == 3
+
+
+def test_a_beginners_first_gate_opens_unless_it_looks_unsafe():
+    assert decide_tasting(0.5, 0.5, 0.5, 0.0, starter=True) == ("PASSED", "gate_starter")
+    assert decide_tasting(0.5, 0.5, 0.5, 0.9, starter=True) == ("SENT_BACK", "gate_safety")
+    assert decide_tasting(0.5, 0.5, 0.5, 0.0) == ("SENT_BACK", "gate_weak_evidence")
+    assert starter_gate("new", 1) and starter_gate("idea", 1)
+    assert not starter_gate("tested", 1)
+    assert not starter_gate("new", 2)
+
+
+def test_a_partial_verdict_names_the_scores_that_are_short():
+    verdict = {"rule": "below_cutoff", "market_need": 2.5, "feasibility": 2.2, "differentiation": 1.9}
+    assert explain_verdict(verdict).startswith("Differentiation is below Solid, the bar for PROVEN. Show why you win")
+    both = dict(verdict, feasibility=1.5)
+    assert explain_verdict(both).startswith("Feasibility and Differentiation are below Solid")
+    assert explain_verdict(dict(verdict, rule="dodged")).startswith("The last answer did not answer")

@@ -3,15 +3,20 @@ import pytest
 from pitchkitchen.review.coach import (
     ChefUnavailable,
     evidence_text,
+    find_facts,
+    parse_facts,
     suggest_one_liners,
+    suggest_searches,
+    suggest_sparks,
     transcript,
     write_homework,
     write_pitch,
+    write_starter_pack,
     write_turn,
 )
 from pitchkitchen.review.logic import answers_left, focus, heat, next_step, recommend
 
-from fakes import FakeChef
+from fakes import PACK, FakeChef, FakeSearch, grounded
 
 VERDICT = {
     "label": "PARTIAL",
@@ -92,6 +97,8 @@ def test_write_turn_sends_bands_focus_tone_and_evidence():
     assert "Never mention Jev" in system
     assert "not proven yet" in system
     assert "Never assume" in system
+    assert "Never say something is proven unless" in system
+    assert "If the founder asks what is missing" in system
     assert "Marta (seller)" in system
     assert "no swearing" in system
     assert turn == {"reaction": "Raw.", "question": "Who paid you?"}
@@ -172,3 +179,82 @@ def test_evidence_text_lists_each_conversation():
     assert evidence_text([]).startswith("The founder has not logged")
     assert '"Took weeks"' in evidence_text([LOG])
     assert "paid: n/a" in evidence_text([LOG])
+
+
+def test_chef_coaches_a_beginner_differently_from_a_tested_founder():
+    chef = FakeChef()
+    write_turn(CONVERSATION, VERDICT, "feasibility", "normal", "open", "key", transport=chef, level="new")
+    assert "beginner who started with no idea" in system_of(chef)
+
+    chef = FakeChef()
+    write_turn(CONVERSATION, VERDICT, "feasibility", "normal", "open", "key", transport=chef, level="tested")
+    assert "Expect names, dates, and numbers" in system_of(chef)
+
+    chef = FakeChef()
+    write_homework(CONVERSATION, "market_need", "key", transport=chef, level="new")
+    assert "people they can actually reach this week" in system_of(chef)
+
+
+def test_evidence_text_keeps_facts_apart_from_conversations():
+    fact = {"kind": "fact", "quote": "Lunch costs 12 euros.", "who": "menu.example", "source": "https://menu.example"}
+    text = evidence_text([LOG, fact])
+    assert "Marta (seller)" in text
+    assert "Facts the founder found online" in text
+    assert "Lunch costs 12 euros. (source: menu.example, https://menu.example)" in text
+    assert "not logged any customer conversations" in evidence_text([fact])
+
+
+def test_sparks_give_a_beginner_three_ideas_with_a_story_and_a_first_fact():
+    sparks = suggest_sparks("I study BBA and spend too much on lunch", "key", transport=FakeChef())
+    assert len(sparks) == 3
+    assert sparks[0]["story"] == "I spend 12 euros on lunch."
+    assert sparks[0]["first_fact"] == "Menu prices near campus"
+    with pytest.raises(ChefUnavailable):
+        suggest_sparks("x", "key", transport=FakeChef({"sparks": [{"story": "no one-liner"}]}))
+
+
+def test_web_facts_keep_only_sentences_with_a_source():
+    payload = grounded([("A delivery app charges 3.99 euros on small orders.", "https://delivery.example")])
+    meta = payload["candidates"][0]["groundingMetadata"]
+    meta["groundingSupports"] += [
+        {"segment": {"text": "Too short."}, "groundingChunkIndices": [0]},
+        {"segment": {"text": "A long sentence that no source backs up at all."}, "groundingChunkIndices": []},
+        {"segment": {"text": "A delivery app charges 3.99 euros on small orders."}, "groundingChunkIndices": [0]},
+    ]
+    assert parse_facts(payload) == [
+        {"fact": "A delivery app charges 3.99 euros on small orders.", "source": "https://delivery.example", "site": "delivery.example"}
+    ]
+
+    search = FakeSearch()
+    facts = find_facts("We help X", "Story", "key", "model-a,model-b", transport=search)
+    assert len(facts) == 2
+    assert search.calls[0]["tools"] == [{"google_search": {}}]
+    assert search.calls[0]["model"] == "model-a"
+
+
+def test_web_facts_need_a_key_and_at_least_one_sourced_fact():
+    with pytest.raises(ChefUnavailable):
+        find_facts("We help X", "Story", "", transport=FakeSearch())
+    with pytest.raises(ChefUnavailable):
+        find_facts("We help X", "Story", "key", transport=FakeSearch(grounded([])))
+    with pytest.raises(ChefUnavailable):
+        parse_facts({"candidates": []})
+
+
+def test_a_starter_pack_needs_a_problem_features_tasks_and_a_prompt():
+    chef = FakeChef()
+    pack = write_starter_pack(CONVERSATION, "key", transport=chef, evidence=[LOG], verified=False)
+    assert pack == PACK
+    assert "not proven yet" in system_of(chef)
+    assert "Marta (seller)" in system_of(chef)
+    with pytest.raises(ChefUnavailable):
+        write_starter_pack(CONVERSATION, "key", transport=FakeChef(dict(PACK, mvp=[{"why": "no feature"}])))
+
+
+def test_without_search_chef_only_suggests_queries():
+    chef = FakeChef()
+    searches = suggest_searches("We help X", "Story", "key", transport=chef)
+    assert searches[0] == {"find": "What lunch costs near campus", "query": "menu del dia precio Moncloa"}
+    assert "Do not state any facts, numbers, or links" in system_of(chef)
+    with pytest.raises(ChefUnavailable):
+        suggest_searches("We help X", "Story", "key", transport=FakeChef({"searches": [{"find": "no query"}]}))

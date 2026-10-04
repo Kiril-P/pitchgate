@@ -4,7 +4,7 @@ from pathlib import Path
 from pitchkitchen.review.coach import DEFAULT_MODEL, DEFAULT_URL
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
-DEFAULT_JEV_BUDGET = 10
+DEFAULT_JEV_BUDGET = 15
 
 
 def read_env_file(path, environ):

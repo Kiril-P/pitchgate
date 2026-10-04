@@ -9,18 +9,20 @@ from pitchkitchen.review.logic import (
     decide,
     decide_tasting,
     explain,
+    explain_verdict,
     focus,
     over_budget,
     recommend,
 )
 
-CHEF_KINDS = ("turn", "polished", "homework", "next_steps")
+CHEF_KINDS = ("turn", "polished", "homework", "next_steps", "starter_pack")
+JSON_KINDS = ("homework", "next_steps", "starter_pack")
 
 CHEF_TABLE = """
 CREATE TABLE IF NOT EXISTS chef_messages (
     id INTEGER PRIMARY KEY,
     revision_id INTEGER NOT NULL REFERENCES revisions(id),
-    kind TEXT NOT NULL CHECK (kind IN ('turn', 'polished', 'homework', 'next_steps')),
+    kind TEXT NOT NULL CHECK (kind IN ('turn', 'polished', 'homework', 'next_steps', 'starter_pack')),
     body TEXT NOT NULL,
     question TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
@@ -80,7 +82,7 @@ def ensure_schema(connection):
     chef_sql = connection.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chef_messages'"
     ).fetchone()["sql"]
-    if "homework" not in chef_sql:
+    if "starter_pack" not in chef_sql:
         connection.execute("ALTER TABLE chef_messages RENAME TO chef_messages_old")
         connection.executescript(CHEF_TABLE)
         connection.execute("INSERT INTO chef_messages SELECT * FROM chef_messages_old")
@@ -135,7 +137,17 @@ def record_verdict(
 
 
 def record_gate(
-    connection, idea_id, revision_id, session, last_evidence_id, state, api_key, budget=None, now=None, transport=None
+    connection,
+    idea_id,
+    revision_id,
+    session,
+    last_evidence_id,
+    state,
+    api_key,
+    budget=None,
+    now=None,
+    transport=None,
+    starter=False,
 ):
     """Scores this session's tasting logs with one Jev call and stores the gate."""
     created_at = now or utc_now()
@@ -169,6 +181,7 @@ def record_gate(
                 measured["pain_frequency"],
                 measured["willingness_to_pay"],
                 measured["safety_risk"],
+                starter=starter,
             )
     connection.execute(
         """
@@ -241,7 +254,7 @@ def save_chef_json(connection, revision_id, kind, value, now=None):
 
 def chef_for(connection, revision_ids):
     """Returns {revision_id: {kind: message}} for the given revisions.
-    homework and next_steps bodies are stored as JSON and come back parsed."""
+    Bodies of the JSON_KINDS are stored as JSON and come back parsed."""
     if not revision_ids:
         return {}
     marks = ",".join("?" for _ in revision_ids)
@@ -252,22 +265,29 @@ def chef_for(connection, revision_ids):
     found = {}
     for row in rows:
         body = row["body"]
-        if row["kind"] in ("homework", "next_steps"):
+        if row["kind"] in JSON_KINDS:
             body = json.loads(body)
         found.setdefault(row["revision_id"], {})[row["kind"]] = {
             "body": body,
             "question": row["question"],
             "created_at": row["created_at"],
+            "revision_id": row["revision_id"],
         }
     return found
 
 
-def latest_homework(connection, revision_ids):
+def latest_of(connection, revision_ids, kind):
+    """The newest message of one kind on a branch, or None."""
     chef = chef_for(connection, revision_ids)
     for revision_id in reversed(revision_ids):
-        if "homework" in chef.get(revision_id, {}):
-            return chef[revision_id]["homework"]["body"]
+        if kind in chef.get(revision_id, {}):
+            return chef[revision_id][kind]
     return None
+
+
+def latest_homework(connection, revision_ids):
+    found = latest_of(connection, revision_ids, "homework")
+    return found["body"] if found else None
 
 
 def jev_calls_used(connection, idea_id):
@@ -363,4 +383,5 @@ def _verdict(row):
     if verdict["label"] != "PENDING":
         verdict["focus"] = focus(verdict)
         verdict["recommendation"] = recommend(verdict["focus"])
+        verdict["explanation"] = explain_verdict(verdict)
     return verdict
