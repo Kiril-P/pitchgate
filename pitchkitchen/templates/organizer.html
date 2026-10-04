@@ -1,33 +1,40 @@
 {% extends "base.html" %}
-{% from "_macros.html" import stamp %}
+{% from "_macros.html" import stamp, icon %}
 
 {% block title %}Organizer · Pitch Kitchen{% endblock %}
 {% block main_class %}organizer{% endblock %}
 
 {% block content %}
 {% if locked %}
-<section class="panel narrow">
+<section class="panel lock{% if wrong %} is-wrong{% endif %}">
+  <span class="lock-icon">{{ icon("lock") }}</span>
   <h1>Organizer view</h1>
   <p class="muted">Enter the organizer key to see the whole cohort.</p>
   {% if wrong %}<p class="error" role="alert">That key is not right.</p>{% endif %}
   <form class="key-form" method="get" action="{{ url_for('organizer') }}" hx-boost="false">
-    <input name="key" type="password" autocomplete="current-password" required />
-    <button class="primary" type="submit">Open</button>
+    <span class="key-input">
+      <input id="organizer-key" name="key" type="password" autocomplete="current-password" aria-label="Organizer key" required data-main-input />
+      <button class="key-show" type="button" data-show-password="organizer-key" aria-label="Show the key" aria-pressed="false">{{ icon("eye") }}</button>
+    </span>
+    <button class="primary" type="submit"><span>Open</span>{{ icon("arrow-right") }}</button>
   </form>
 </section>
 {% else %}
-<div class="section-head">
+{% set rank = {"UNPROVEN": 0, "PENDING": 1, "PARTIAL": 2, "PROVEN": 3} %}
+{% set trend_rank = {"down": 0, "none": 1, "flat": 2, "up": 3} %}
+{% set station_rank = {"prep": 0, "grill": 1, "tasting": 2, "takeaway": 3} %}
+<div class="section-head org-head">
   <h1>Cohort</h1>
   <p>As of {{ today.isoformat() }}</p>
 </div>
 
 <section class="metrics">
-  <div class="metric"><span class="metric-value">{{ metrics.ideas }}</span><span class="metric-name">Ideas from {{ metrics.founders }} founder{% if metrics.founders != 1 %}s{% endif %}</span></div>
-  <div class="metric"><span class="metric-value">{{ metrics.active_this_week }}</span><span class="metric-name">Active in the last 7 days</span></div>
-  <div class="metric"><span class="metric-value">{{ metrics.answers_per_idea }}</span><span class="metric-name">Answers per idea</span></div>
-  <div class="metric"><span class="metric-value">{{ "%d%%"|format(metrics.reached_tasting * 100) }}</span><span class="metric-name">Talked to real people</span></div>
-  <div class="metric"><span class="metric-value">{{ "%d%%"|format(metrics.returning_founders * 100) }}</span><span class="metric-name">Founders who came back another day</span></div>
-  <div class="metric{% if metrics.stuck %} metric-alert{% endif %}"><span class="metric-value">{{ metrics.stuck }}</span><span class="metric-name">Stuck 7+ days</span></div>
+  <div class="ticket metric" style="--i: 0"><span class="metric-value" data-count>{{ metrics.ideas }}</span><span class="metric-name">Ideas from {{ metrics.founders }} founder{% if metrics.founders != 1 %}s{% endif %}</span></div>
+  <div class="ticket metric" style="--i: 1"><span class="metric-value" data-count>{{ metrics.active_this_week }}</span><span class="metric-name">Active in the last 7 days</span></div>
+  <div class="ticket metric" style="--i: 2"><span class="metric-value" data-count>{{ metrics.answers_per_idea }}</span><span class="metric-name">Answers per idea</span></div>
+  <div class="ticket metric" style="--i: 3"><span class="metric-value" data-count>{{ "%d%%"|format(metrics.reached_tasting * 100) }}</span><span class="metric-name">Talked to real people</span></div>
+  <div class="ticket metric" style="--i: 4"><span class="metric-value" data-count>{{ "%d%%"|format(metrics.returning_founders * 100) }}</span><span class="metric-name">Founders who came back another day</span></div>
+  <div class="ticket metric{% if metrics.stuck %} metric-alert{% endif %}" style="--i: 5"><span class="metric-value" data-count>{{ metrics.stuck }}</span><span class="metric-name">Stuck 7+ days</span></div>
 </section>
 
 <section class="panel">
@@ -35,9 +42,9 @@
   {% set top = metrics.funnel[0][1] or 1 %}
   <div class="funnel">
     {% for name, count in metrics.funnel %}
-    <div class="funnel-row">
+    <div class="funnel-row" style="--i: {{ loop.index0 }}">
       <span>{{ name }}</span>
-      <div class="bar-track"><div class="bar-fill funnel-fill" style="width: {{ count / top * 100 }}%"></div></div>
+      <div class="bar-track" data-tip="{{ (count / top * 100)|round|int }}% of everyone who pitched"><div class="bar-fill funnel-fill" style="--w: {{ count / top * 100 }}%"></div></div>
       <span class="bar-value">{{ count }}</span>
     </div>
     {% endfor %}
@@ -50,30 +57,50 @@
     <p>Stuck first, then longest idle</p>
   </div>
   {% if rows %}
+  <div class="table-tools">
+    <label class="filter">
+      {{ icon("search") }}
+      <input type="search" placeholder="Filter by founder, idea, or station" aria-label="Filter the table" data-filter="#cohort-table" />
+    </label>
+    <span class="muted" data-filter-count>{{ rows|length }} idea{% if rows|length != 1 %}s{% endif %}</span>
+  </div>
   <div class="table-wrap">
-    <table class="cohort-table">
+    <table class="cohort-table" id="cohort-table">
       <thead>
-        <tr><th>Founder</th><th>Idea</th><th>Station</th><th>Verdict</th><th>Trend</th><th>Answers</th><th>Logs</th><th>Gates</th><th>Last active</th></tr>
+        <tr>
+          <th><button type="button" data-sort>Founder</button></th>
+          <th><button type="button" data-sort>Idea</button></th>
+          <th><button type="button" data-sort>Station</button></th>
+          <th><button type="button" data-sort>Verdict</button></th>
+          <th><button type="button" data-sort>Trend</button></th>
+          <th><button type="button" data-sort>Answers</button></th>
+          <th><button type="button" data-sort>Talks</button></th>
+          <th><button type="button" data-sort>Gates</button></th>
+          <th><button type="button" data-sort>Last active</button></th>
+        </tr>
       </thead>
       <tbody>
         {% for row in rows %}
         <tr{% if row.stuck %} class="row-stuck"{% endif %}>
-          <td>{{ row.display_name }}</td>
+          <td>{% if row.stuck %}<span class="stuck-dot" aria-hidden="true"></span>{% endif %}{{ row.display_name }}</td>
           <td><a href="{{ url_for('idea_detail', token=row.token) }}">{{ row.one_liner }}</a></td>
-          <td>{{ row.station_name }}{% if row.status in ("parked", "served", "binned") %} · {{ row.status }}{% endif %}</td>
-          <td>{{ stamp({"label": row.label}) }}</td>
-          <td class="trend trend-{{ row.trend }}">{{ {"up": "Improving", "down": "Slipping", "flat": "Flat", "none": "–"}[row.trend] }}</td>
+          <td data-value="{{ station_rank[row.station] }}">{{ row.station_name }}{% if row.status in ("parked", "served", "binned") %} · {{ row.status }}{% endif %}</td>
+          <td data-value="{{ rank[row.label] }}">{{ stamp({"label": row.label}) }}</td>
+          <td class="trend trend-{{ row.trend }}" data-value="{{ trend_rank[row.trend] }}">{{ {"up": "Improving", "down": "Slipping", "flat": "Flat", "none": "–"}[row.trend] }}</td>
           <td>{{ row.answers }}</td>
           <td>{{ row.logs }}</td>
           <td>{{ row.gates_passed }}</td>
-          <td>{{ row.last_activity }}{% if row.stuck %} · {{ row.days_idle }}d idle{% endif %}</td>
+          <td data-value="{{ row.last_activity }}">{{ row.last_activity }}{% if row.stuck %} · {{ row.days_idle }}d idle{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="empty">No ideas yet.</p>
+  <div class="empty">
+    <span class="empty-icon">{{ icon("users") }}</span>
+    <p>No ideas yet.</p>
+  </div>
   {% endif %}
 </section>
 {% endif %}

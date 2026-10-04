@@ -22,6 +22,7 @@ def create_app(config):
     app.config["ORGANIZER_KEY"] = config.get("ORGANIZER_KEY", "")
     app.config["JEV_TRANSPORT"] = config.get("JEV_TRANSPORT")
     app.config["CHEF_TRANSPORT"] = config.get("CHEF_TRANSPORT")
+    app.config["SEARCH_TRANSPORT"] = config.get("SEARCH_TRANSPORT")
     app.config["TODAY"] = config.get("TODAY")
 
     ensure_database(app.config["DATABASE"])

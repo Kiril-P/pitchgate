@@ -1,111 +1,200 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card %}
+{% from "_macros.html" import card, icon, counter %}
 
 {% block main_class %}home{% endblock %}
 
 {% block content %}
+{% set steps = [
+  ("prep", "receipt", "Prep.", "Pitch in one line and tell the story, or start with no idea at all.", "No idea yet? Tell Chef about your week and he sparks three problems worth testing."),
+  ("grill", "flame", "Grill.", "Five questions per session, about facts, not plans.", "Chef only takes the past: who, when, how many, how much."),
+  ("tasting", "spoon", "Tasting.", "Find facts online and log real conversations to unlock the next session.", "Beginners open their first gate with any three facts or conversations. After that, Jev tastes them."),
+  ("served", "cloche", "Served.", "A pitch built from your evidence, plus a starter pack for Claude Code.", "Draft packs any time. A verified pack needs a PROVEN verdict and 3 real conversations."),
+] %}
+{% set level_cards = {
+  "new": ("sparkles", "No idea yet", "Chef helps you find a problem worth testing."),
+  "idea": ("receipt", "I have an idea", "Chef helps you find the facts behind it."),
+  "tested": ("users", "I've talked to customers", "Chef holds you to names, dates, and numbers."),
+} %}
+{% set tone_cards = {
+  "supportive": {"name": "Supportive mentor", "line": "Good start. Who is the last person who told you this hurt?", "heat": 1},
+  "tough": {"name": "Tough but professional", "line": "That is a hope, not a fact. Who paid?", "heat": 2},
+  "ramsay": {"name": "Full Ramsay (swearing)", "line": "This pitch is RAW. Who the bloody hell paid you?", "heat": 3},
+} %}
 <section class="intro">
-  <div>
-    <h1>Pitch it. Then prove it.</h1>
-    <p class="lede">Write your idea in one line. Chef interviews you on what has already happened, not what you hope will. Between sessions you go talk to real people and log what they said. An idea is served when the evidence backs it.</p>
+  <div class="intro-copy">
+    <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Venture lab kitchen · open tonight</p>
+    <h1 class="hero">
+      <span class="hero-line">Pitch it.</span>
+      <span class="hero-line hero-prove">Then prove it.<svg class="swash" viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true"><path d="M4 16 C 60 6, 120 4, 180 10 S 270 20, 296 8"/></svg></span>
+    </h1>
+    <svg class="badge" viewBox="0 0 120 120" aria-hidden="true">
+      <defs><path id="badge-circle" d="M60 60 m-44 0 a44 44 0 1 1 88 0 a44 44 0 1 1 -88 0"/></defs>
+      <text><textPath href="#badge-circle" textLength="274" lengthAdjust="spacing">NO HYPOTHETICALS · FACTS ONLY · </textPath></text>
+      <use class="badge-flame" href="#i-flame" x="44" y="44" width="32" height="32"/>
+    </svg>
+    <p class="lede">Start with an idea, or with none. Chef interviews you on what has already happened, not what you hope will. Between sessions you find facts and talk to real people. You leave with a starter pack you can build from in Claude Code, verified once the evidence backs it.</p>
     <ol class="how">
-      <li><strong>Prep.</strong> Pitch in one line and tell the story.</li>
-      <li><strong>Grill.</strong> Five questions per session, about facts, not plans.</li>
-      <li><strong>Tasting.</strong> Log 3 to 5 real conversations to unlock the next session.</li>
-      <li><strong>Served.</strong> A pitch built only from your evidence, plus next steps.</li>
+      {% for key, glyph, name, text, more in steps %}
+      <li style="--i: {{ loop.index0 }}">
+        <button class="flip how-{{ key }}" type="button" data-flip aria-pressed="false">
+          <span class="flip-face flip-front">
+            <span class="how-icon">{{ icon(glyph) }}</span>
+            <span class="how-number">{{ "%02d"|format(loop.index) }}</span>
+            <span><strong>{{ name }}</strong> {{ text }}</span>
+          </span>
+          <span class="flip-face flip-back">
+            <span class="how-number">Chef's note</span>
+            <span>{{ more }}</span>
+          </span>
+        </button>
+      </li>
+      {% endfor %}
     </ol>
   </div>
 
-  <form class="ticket order" method="post" action="{{ url_for('create') }}">
-    <div class="ticket-meta">
-      <span>{% if form.pivot %}Pivot{% else %}New order{% endif %}</span>
-      <span>Prep</span>
+  <div class="order-wrap">
+    <div class="printer" aria-hidden="true">
+      <span class="printer-led"></span>
+      <span>Kitchen printer · P-01</span>
+      <span class="printer-slot"></span>
     </div>
-    {% if form.pivot %}
-    <p class="pivot-note">Pivoting from “{{ form.pivot_title }}”. The old idea stays as it is.</p>
-    <input type="hidden" name="pivot" value="{{ form.pivot }}" />
-    {% endif %}
-    {% if error %}
-    <p class="error" role="alert">{{ error }}</p>
-    {% endif %}
-    <label>
-      Display name
-      <input name="display_name" maxlength="{{ limits.display_name }}" value="{{ form.display_name }}" autocomplete="nickname" required />
-    </label>
-    <label>
-      The story
-      <textarea name="story" maxlength="{{ limits.story }}" rows="5" placeholder="Who has the problem, what you've seen happen, and why you." required>{{ form.story }}</textarea>
-    </label>
-    <label>
-      One-liner
-      <input id="one-liner" name="one_liner" maxlength="{{ limits.one_liner }}" value="{{ form.one_liner }}" placeholder="We help [who] [do what] by [how]" required />
-    </label>
-    {% if can_suggest %}
-    <div class="suggest">
-      <button class="secondary-paper" type="button" hx-post="{{ url_for('suggest') }}" hx-include="closest form" hx-target="#suggestions" hx-swap="innerHTML" hx-indicator="#suggestions">Suggest one-liners from my story</button>
-      <div id="suggestions" class="suggestions" aria-live="polite"></div>
-    </div>
-    {% endif %}
-    <label>
-      Chef's tone
-      <select name="tone">
-        {% for tone in tones %}
-        <option value="{{ tone }}"{% if form.tone == tone %} selected{% endif %}>{{ {"supportive": "Supportive mentor", "tough": "Tough but professional", "ramsay": "Full Ramsay (swearing)"}[tone] }}</option>
+    <form class="ticket order" method="post" action="{{ url_for('create') }}">
+      <div class="ticket-meta">
+        <span>{% if form.pivot %}Pivot{% else %}New order{% endif %}</span>
+        <span>Prep · <time data-clock>--:--</time></span>
+      </div>
+      {% if form.pivot %}
+      <p class="pivot-note">{{ icon("pivot") }}<span>Pivoting from “{{ form.pivot_title }}”. The old idea stays as it is.</span></p>
+      <input type="hidden" name="pivot" value="{{ form.pivot }}" />
+      {% endif %}
+      {% if error %}
+      <p class="error" role="alert">{{ error }}</p>
+      {% endif %}
+      <fieldset class="levels">
+        <legend>Where are you starting?</legend>
+        {% for level in levels %}
+        {% set glyph, name, line = level_cards[level] %}
+        <label class="level level-{{ level }}">
+          <input type="radio" name="level" value="{{ level }}"{% if form.level == level %} checked{% endif %} />
+          <span class="level-icon">{{ icon(glyph) }}</span>
+          <span class="level-name">{{ name }}</span>
+          <span class="level-line">{{ line }}</span>
+        </label>
         {% endfor %}
-      </select>
-    </label>
-    <label class="check">
-      <input type="checkbox" name="shared"{% if form.shared %} checked{% endif %} />
-      <span>Show it on the cohort board so other founders can read it</span>
-    </label>
-    <label class="check">
-      <input type="checkbox" name="consent"{% if form.consent %} checked{% endif %} required />
-      <span>I agree that my text is sent to Google Gemini and Typesafe (Jev) to be scored, and that the lab organizers can read it.</span>
-    </label>
-    <button class="primary" type="submit" data-busy="Chef is reading…">Send it to the kitchen</button>
-    <p class="fine">Your idea gets a private link. Ideas you create in this browser are listed below; keep the link to open it elsewhere.</p>
-  </form>
+      </fieldset>
+      {% if can_suggest %}
+      <div class="spark">
+        <label class="field">
+          <span class="field-head"><span>Tell Chef about your week</span></span>
+          <textarea name="about" rows="3" maxlength="2000" placeholder="What you study, what annoys you every week, what you spend money or time on, who you know." data-autosize></textarea>
+        </label>
+        <button class="secondary-paper" type="button" hx-post="{{ url_for('spark') }}" hx-include="closest form" hx-target="#sparks" hx-swap="innerHTML" hx-indicator="#sparks">{{ icon("sparkles") }}<span>Spark three ideas</span></button>
+        <div id="sparks" class="suggestions" aria-live="polite"></div>
+      </div>
+      {% endif %}
+      <label class="field">
+        <span class="field-head"><span>Display name</span>{{ counter(form.display_name, limits.display_name) }}</span>
+        <input id="display-name" name="display_name" maxlength="{{ limits.display_name }}" value="{{ form.display_name }}" autocomplete="nickname" required data-main-input data-draft="keep" />
+      </label>
+      <label class="field">
+        <span class="field-head"><span>The story</span>{{ counter(form.story, limits.story) }}</span>
+        <textarea name="story" maxlength="{{ limits.story }}" rows="5" placeholder="Who has the problem, what you've seen happen, and why you." required data-autosize data-draft>{{ form.story }}</textarea>
+      </label>
+      <div class="field">
+        <span class="field-head"><label for="one-liner">One-liner</label>{{ counter(form.one_liner, limits.one_liner) }}</span>
+        <input id="one-liner" name="one_liner" maxlength="{{ limits.one_liner }}" value="{{ form.one_liner }}" placeholder="We help [who] [do what] by [how]" required data-draft data-recipe-input />
+        <span class="recipe" aria-hidden="true">
+          <span class="recipe-label">Recipe</span>
+          <span class="recipe-chip" data-has="we help">{{ icon("check") }}We help [who]</span>
+          <span class="recipe-chip" data-has=" by ">{{ icon("check") }}by [how]</span>
+        </span>
+      </div>
+      {% if can_suggest %}
+      <div class="suggest">
+        <button class="secondary-paper" type="button" hx-post="{{ url_for('suggest') }}" hx-include="closest form" hx-target="#suggestions" hx-swap="innerHTML" hx-indicator="#suggestions">{{ icon("sparkles") }}<span>Suggest one-liners from my story</span></button>
+        <div id="suggestions" class="suggestions" aria-live="polite"></div>
+      </div>
+      {% endif %}
+      <fieldset class="tones">
+        <legend>Chef's tone</legend>
+        {% for tone in tones %}
+        {% set card_info = tone_cards[tone] %}
+        <label class="tone tone-{{ tone }}">
+          <input type="radio" name="tone" value="{{ tone }}"{% if form.tone == tone %} checked{% endif %} />
+          <span class="tone-heat" aria-hidden="true">{% for n in range(3) %}<span class="{{ 'hot' if n < card_info.heat }}">{{ icon("flame") }}</span>{% endfor %}</span>
+          <span class="tone-name">{{ card_info.name }}</span>
+          <span class="tone-line">“{{ card_info.line }}”</span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      <label class="switch">
+        <input type="checkbox" name="shared" role="switch"{% if form.shared %} checked{% endif %} />
+        <span>Show it on the cohort board so other founders can read it</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" name="consent"{% if form.consent %} checked{% endif %} required />
+        <span>I agree that my text is sent to Google Gemini and Typesafe (Jev) to be scored, and that the lab organizers can read it.</span>
+      </label>
+      <button class="primary primary-big" type="submit" data-busy="Chef is reading…"><span data-label>Send it to the kitchen</span>{{ icon("arrow-right") }}</button>
+      <p class="fine">Your idea gets a private link. Ideas you create in this browser are listed below; keep the link to open it elsewhere.</p>
+    </form>
+  </div>
 </section>
 
-{% set empty_text = {
-  "kitchen": "Nothing cooking. Send an idea in.",
-  "served": "Nothing served yet.",
-  "binned": "The bin is empty.",
+{% set empty = {
+  "kitchen": ("flame", "Nothing cooking. Send an idea in."),
+  "served": ("cloche", "Nothing served yet."),
+  "binned": ("trash", "The bin is empty."),
 } %}
-<h2 class="area-title">Your ideas</h2>
+<div class="boards-head">
+  <h2 class="area-title">Your ideas</h2>
+  <nav class="board-tabs" aria-label="Boards">
+    {% for board in boards %}
+    <a class="board-tab" href="#board-{{ board.key }}">{{ board.title }}<span class="count">{{ board.ideas|length }}</span></a>
+    {% endfor %}
+    <a class="board-tab" href="#board-cohort">Cohort<span class="count">{{ cohort|length }}</span></a>
+  </nav>
+</div>
 {% for board in boards %}
-<section class="board board-{{ board.key }}">
+<section class="board board-{{ board.key }}" id="board-{{ board.key }}">
   <div class="section-head">
-    <h2>{{ board.title }}</h2>
+    <h2>{{ icon(empty[board.key][0]) }}{{ board.title }}</h2>
     <p>{{ board.ideas|length }} ticket{% if board.ideas|length != 1 %}s{% endif %}</p>
   </div>
-  <div class="rail" aria-hidden="true"></div>
   {% if board.ideas %}
   <ul class="tickets">
     {% for idea in board.ideas %}
-    {{ card(idea) }}
+    {{ card(idea, loop.index0) }}
     {% endfor %}
   </ul>
   {% else %}
-  <p class="empty">{{ empty_text[board.key] }}</p>
+  <div class="empty">
+    <span class="empty-icon">{{ icon(empty[board.key][0]) }}</span>
+    <p>{{ empty[board.key][1] }}</p>
+    {% if board.key == "kitchen" %}
+    <button class="secondary" type="button" data-focus="#display-name">{{ icon("receipt") }}<span>Start a ticket</span></button>
+    {% endif %}
+  </div>
   {% endif %}
 </section>
 {% endfor %}
 
-<section class="board board-cohort">
+<section class="board board-cohort" id="board-cohort">
   <div class="section-head">
-    <h2>Cohort board</h2>
+    <h2>{{ icon("users") }}Cohort board</h2>
     <p>Ideas other founders chose to share</p>
   </div>
-  <div class="rail" aria-hidden="true"></div>
   {% if cohort %}
   <ul class="tickets">
     {% for idea in cohort %}
-    {{ card(idea) }}
+    {{ card(idea, loop.index0) }}
     {% endfor %}
   </ul>
   {% else %}
-  <p class="empty">Nobody has shared an idea yet.</p>
+  <div class="empty">
+    <span class="empty-icon">{{ icon("users") }}</span>
+    <p>Nobody has shared an idea yet.</p>
+  </div>
   {% endif %}
 </section>
 {% endblock %}

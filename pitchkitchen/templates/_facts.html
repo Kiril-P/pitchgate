@@ -1,0 +1,34 @@
+{% from "_macros.html" import icon %}
+{% if error %}
+<p class="error">{{ error }}</p>
+{% elif searches %}
+<div class="look-ups">
+  <p class="fine">Chef can't search the web on this key right now, so here is what to look up yourself. Each link opens a Google search.</p>
+  <ol>
+    {% for search in searches %}
+    <li style="--i: {{ loop.index0 }}">
+      <span>{{ search.find }}</span>
+      <a href="https://www.google.com/search?q={{ search.query|urlencode }}" target="_blank" rel="noopener noreferrer">{{ icon("search") }}<span>{{ search.query }}</span></a>
+    </li>
+    {% endfor %}
+  </ol>
+  <button class="secondary" type="button" data-open-details="add-fact">{{ icon("link") }}<span>Found one? Add it with its link</span></button>
+</div>
+{% else %}
+<form class="fact-picks" method="post" action="{{ url_for('keep_facts', token=idea.token) }}">
+  <p class="fine">Tick the facts worth keeping. Each one is saved with its link, so anyone can check it.</p>
+  {% for fact in facts %}
+  <label class="fact-pick" style="--i: {{ loop.index0 }}">
+    <input type="checkbox" name="keep" value="{{ loop.index0 }}" checked />
+    <span class="fact-pick-text">
+      <span>{{ fact.fact }}</span>
+      <a href="{{ fact.source }}" target="_blank" rel="noopener noreferrer">{{ icon("link") }}{{ fact.site or "Source" }}</a>
+    </span>
+    <input type="hidden" name="fact_{{ loop.index0 }}" value="{{ fact.fact }}" />
+    <input type="hidden" name="source_{{ loop.index0 }}" value="{{ fact.source }}" />
+    <input type="hidden" name="site_{{ loop.index0 }}" value="{{ fact.site }}" />
+  </label>
+  {% endfor %}
+  <button class="secondary" type="submit" data-busy="Saving…">{{ icon("check") }}<span data-label>Keep the ticked facts</span></button>
+</form>
+{% endif %}

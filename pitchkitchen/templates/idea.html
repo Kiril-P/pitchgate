@@ -1,28 +1,30 @@
 {% extends "base.html" %}
-{% from "_macros.html" import stamp, chip, bar, band_bar, clock, day, station_rail %}
+{% from "_macros.html" import stamp, chip, bar, band_bar, day, when, station_rail, icon, counter %}
 
 {% block title %}{{ idea.display_name }} · Pitch Kitchen{% endblock %}
-{% block main_class %}idea{% endblock %}
+{% block main_class %}idea tone-{{ idea.tone }}{% endblock %}
 
 {% block content %}
 {% set pitch = idea.branch[0] %}
 {% set verdict = head.verdict %}
+{% set initial = idea.display_name[:1]|upper %}
 
 <div class="page-top">
-  <a class="back" href="{{ url_for('home') }}">Your ideas</a>
+  <a class="back" href="{{ url_for('home') }}">{{ icon("arrow-left") }}<span>Your ideas</span></a>
   <div class="page-tools">
+    <button class="tool" type="button" data-copy-link data-tip="Anyone with the link can open it">{{ icon("link") }}<span>Copy link</span></button>
     <form method="post" action="{{ url_for('share', token=idea.token) }}">
-      <button class="link-quiet" type="submit">{% if idea.shared %}Stop sharing{% else %}Share on cohort board{% endif %}</button>
+      <button class="tool{% if idea.shared %} is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if idea.shared else 'false' }}">{{ icon("users") }}<span>{% if idea.shared %}Stop sharing{% else %}Share on cohort board{% endif %}</span></button>
     </form>
-    <form method="post" action="{{ url_for('delete', token=idea.token) }}" hx-confirm="Delete this idea, its conversation, and its logs?">
-      <button class="link-danger" type="submit">Delete idea</button>
+    <form method="post" action="{{ url_for('delete', token=idea.token) }}" hx-confirm="Delete this idea, its conversation, and its logs?" data-confirm-yes="Delete idea">
+      <button class="tool tool-danger" type="submit">{{ icon("trash") }}<span>Delete idea</span></button>
     </form>
   </div>
 </div>
 
 {{ station_rail(stations) }}
 
-<section class="ticket order-head">
+<section class="ticket order-head" style="view-transition-name: idea-{{ idea.id }}">
   <div class="ticket-meta">
     <span>#{{ "%03d"|format(idea.id) }} · {{ idea.display_name }} · {{ idea.status }} · session {{ sessions }}</span>
     <span>{{ day(idea.created_at) }}</span>
@@ -30,15 +32,19 @@
   <h1>{{ pitch.one_liner }}</h1>
   {{ stamp(verdict, "stamp-large") }}
   <p class="ticket-note">
+    {{ icon("lock") }}
     Private link: only people you give this page's address to can open it{% if idea.shared %}, and it is listed on the cohort board{% endif %}.
     {% if pivot_from %}Pivoted from <a href="{{ url_for('idea_detail', token=pivot_from.token) }}">“{{ pivot_from.branch[0].one_liner }}”</a>.{% endif %}
   </p>
 </section>
 
-<section class="panel">
+<section class="panel evidence">
   <div class="section-head">
-    <h2>Evidence check</h2>
-    <p><span class="budget{% if jev_used >= jev_budget %} budget-spent{% endif %}" title="Successful Jev calls this idea has used, out of JEV_BUDGET_PER_IDEA">Jev {{ jev_used }} / {{ jev_budget }}</span></p>
+    <h2>{{ icon("search") }}Evidence check</h2>
+    <p class="budget-wrap">
+      <span class="gauge{% if jev_used >= jev_budget %} gauge-spent{% endif %}" style="--p: {{ [jev_used / jev_budget * 100 if jev_budget else 100, 100]|min }}" aria-hidden="true"></span>
+      <span class="budget{% if jev_used >= jev_budget %} budget-spent{% endif %}" data-tip="Successful Jev calls this idea has used, out of JEV_BUDGET_PER_IDEA" data-tip-align="end">Jev {{ jev_used }} / {{ jev_budget }}</span>
+    </p>
   </div>
   {% if verdict and verdict.market_need is not none %}
   <p class="muted">{{ verdict.explanation }}</p>
@@ -52,77 +58,107 @@
     {{ bar("Safety risk", verdict.safety_risk, 1, 0.5, "High" if verdict.safety_risk > 0.5 else "Low", "Above the mark is an automatic UNPROVEN", invert=True) }}
   </div>
   <p class="legend">
+    <span class="legend-mark" aria-hidden="true"></span>
     The mark on each bar is Solid, the bar for PROVEN.
-    {% if verdict.answered is not none %}Answered Chef's question: <strong>{{ "yes" if verdict.answered >= 0.5 else "no" }}</strong>.{% endif %}
+    {% if verdict.answered is not none %}Answered Chef's question: <strong class="answered answered-{{ 'yes' if verdict.answered >= 0.5 else 'no' }}">{{ "yes" if verdict.answered >= 0.5 else "no" }}</strong>.{% endif %}
   </p>
   {% else %}
-  <p>Not scored yet.</p>
-  <p class="muted">{{ verdict.explanation if verdict else "Nothing has been sent to Jev for this version." }}</p>
+  <div class="unscored">
+    <span class="unscored-icon">{{ icon("clock") }}</span>
+    <div>
+      <p>Not scored yet.</p>
+      <p class="muted">{{ verdict.explanation if verdict else "Nothing has been sent to Jev for this version." }}</p>
+    </div>
+  </div>
   {% endif %}
 </section>
 
-<section>
+<section class="grill">
   <div class="section-head">
-    <h2>Grill</h2>
-    <p>{{ idea.branch|length - 1 }} answer{% if idea.branch|length != 2 %}s{% endif %}{% if step == "open" and not closed %} · {{ answers_left }} left this session{% endif %}</p>
+    <h2>{{ icon("flame") }}Grill</h2>
+    <p>
+      {% if step == "open" and not closed %}<span class="pips" aria-hidden="true">{% for n in range(session_answers) %}<i{% if n < session_answers - answers_left %} class="on"{% endif %}></i>{% endfor %}</span>{% endif %}
+      {{ idea.branch|length - 1 }} answer{% if idea.branch|length != 2 %}s{% endif %}{% if step == "open" and not closed %} · {{ answers_left }} left this session{% endif %}
+    </p>
   </div>
   <ol class="thread">
     {% for revision in idea.branch %}
     <li class="message founder">
-      <div class="message-meta">
-        <span>{{ idea.display_name }} · {{ day(revision.created_at) }} {{ clock(revision.created_at) }}{% if revision.versions %} · edited{% endif %}</span>
-        {{ chip(revision.verdict) }}
-      </div>
-      <div class="bubble">
-        {% if revision.kind == "pitch" %}
-        <p class="bubble-title">{{ revision.one_liner }}</p>
-        <p>{{ revision.story }}</p>
-        {% else %}
-        <p>{{ revision.answer }}</p>
+      <span class="avatar avatar-founder" aria-hidden="true">{{ initial }}</span>
+      <div class="message-body">
+        <div class="message-meta">
+          <span>{{ idea.display_name }} · {{ when(revision.created_at) }}{% if revision.versions %} · edited{% endif %}</span>
+          {{ chip(revision.verdict) }}
+        </div>
+        <div class="bubble">
+          {% if revision.kind == "pitch" %}
+          <p class="bubble-title">{{ revision.one_liner }}</p>
+          <p>{{ revision.story }}</p>
+          {% else %}
+          <p>{{ revision.answer }}</p>
+          {% endif %}
+        </div>
+        {% if revision.kind == "answer" and not closed %}
+        <details class="edit">
+          <summary>{{ icon("pencil") }}<span>Edit</span></summary>
+          <form method="post" action="{{ url_for('edit', token=idea.token, revision_id=revision.id) }}">
+            <textarea name="answer" maxlength="{{ limits.answer }}" rows="3" required data-autosize>{{ revision.answer }}</textarea>
+            <p class="fine">Saves a new version and re-scores it. Answers after this one leave the conversation; the old version is kept in history.</p>
+            <button class="secondary" type="submit" data-busy="Re-scoring…"><span data-label>Save new version</span></button>
+          </form>
+        </details>
         {% endif %}
       </div>
-      {% if revision.kind == "answer" and not closed %}
-      <details class="edit">
-        <summary>Edit</summary>
-        <form method="post" action="{{ url_for('edit', token=idea.token, revision_id=revision.id) }}">
-          <textarea name="answer" maxlength="{{ limits.answer }}" rows="3" required>{{ revision.answer }}</textarea>
-          <p class="fine">Saves a new version and re-scores it. Answers after this one leave the conversation; the old version is kept in history.</p>
-          <button class="secondary" type="submit" data-busy="Re-scoring…">Save new version</button>
-        </form>
-      </details>
-      {% endif %}
     </li>
     {% if revision.chef %}
     <li class="message chef">
-      <div class="message-meta">
-        <span>Chef · {{ clock(revision.chef.created_at) }}</span>
-      </div>
-      <div class="bubble">
-        {% if revision.chef.question %}
-        <p class="bubble-question">{{ revision.chef.question }}</p>
+      <span class="avatar avatar-chef" aria-hidden="true">{{ icon("chef") }}</span>
+      <div class="message-body">
+        <div class="message-meta">
+          <span>Chef · {{ when(revision.chef.created_at, "clock") }}</span>
+        </div>
+        <div class="bubble">
+          {% if revision.chef.question %}
+          <p class="bubble-question">{{ revision.chef.question }}</p>
+          {% endif %}
+          <p class="bubble-reaction">{{ revision.chef.body }}</p>
+        </div>
+        {% if revision.verdict and revision.verdict.recommendation and revision.verdict.label != "PROVEN" %}
+        <p class="message-note">{{ icon("sparkles") }}<span>{{ revision.verdict.recommendation }}</span></p>
         {% endif %}
-        <p class="bubble-reaction">{{ revision.chef.body }}</p>
       </div>
-      {% if revision.verdict and revision.verdict.recommendation and revision.verdict.label != "PROVEN" %}
-      <p class="message-note">{{ revision.verdict.recommendation }}</p>
-      {% endif %}
     </li>
     {% endif %}
     {% endfor %}
 
     {% if paused and not closed %}
-    <li class="message chef">
-      <div class="message-meta"><span>Kitchen</span></div>
-      <div class="bubble bubble-out">
-        {% if paused == "jev" %}
-        <p>Jev didn't score this one yet.</p>
-        <p class="muted-ink">{{ verdict.explanation if verdict else "" }}</p>
-        {% else %}
-        <p>Chef stepped out. Your answer is saved.</p>
-        {% endif %}
-        <form method="post" action="{{ url_for('retry', token=idea.token) }}">
-          <button class="secondary-ink" type="submit" data-busy="Trying again…">Try again</button>
-        </form>
+    <li class="message chef message-paused">
+      <span class="avatar avatar-kitchen" aria-hidden="true">{{ icon("bell") }}</span>
+      <div class="message-body">
+        <div class="message-meta"><span>Kitchen</span></div>
+        <div class="bubble bubble-out">
+          {% if paused == "jev" %}
+          <p>Jev didn't score this one yet.</p>
+          <p class="muted-ink">{{ verdict.explanation if verdict else "" }}</p>
+          {% else %}
+          <p>Chef stepped out. Your answer is saved.</p>
+          {% endif %}
+          <form method="post" action="{{ url_for('retry', token=idea.token) }}">
+            <button class="secondary-ink" type="submit" data-busy="Trying again…">{{ icon("rotate") }}<span data-label>Try again</span></button>
+          </form>
+        </div>
+      </div>
+    </li>
+    {% endif %}
+
+    {% if step == "open" and not paused and not closed and head.chef and not head.chef.question %}
+    <li class="message chef message-opener">
+      <span class="avatar avatar-kitchen" aria-hidden="true">{{ icon("bell") }}</span>
+      <div class="message-body">
+        <div class="message-meta"><span>Kitchen · session {{ sessions }}</span></div>
+        <div class="bubble">
+          <p class="bubble-question">Session {{ sessions }} is open. What did your facts and conversations teach you: what surprised you, and what do people already do or pay about it today?</p>
+        </div>
       </div>
     </li>
     {% endif %}
@@ -134,78 +170,128 @@
 
   {% if idea.status == "binned" %}
   <div class="ending ending-binned">
+    <span class="ending-icon">{{ icon("trash") }}</span>
     <h2>Binned.</h2>
     <p>UNPROVEN twice in a row. Most good startups are a pivot of a first idea: keep what you learned and change the customer, problem, or approach.</p>
-    <a class="primary" href="{{ url_for('home', pivot=idea.token) }}">Pivot this idea</a>
+    <a class="primary" href="{{ url_for('home', pivot=idea.token) }}">{{ icon("pivot") }}<span>Pivot this idea</span></a>
   </div>
   {% elif idea.status == "served" %}
-  <div class="ending ending-served">
+  <div class="ending ending-served" data-celebrate="served-{{ idea.token }}">
+    <button class="ending-icon" type="button" data-confetti aria-label="Celebrate">{{ icon("cloche") }}</button>
     <h2>Served.</h2>
     {% if polished %}
-    <p class="polished">{{ polished.body }}</p>
+    <div class="polished-wrap">
+      <p class="ticket polished" id="polished">{{ polished.body }}</p>
+      <button class="tool" type="button" data-copy="#polished" data-copy-message="Pitch copied.">{{ icon("copy") }}<span>Copy pitch</span></button>
+    </div>
     {% endif %}
     {% if next_steps and next_steps.body %}
     <h3>Next two weeks</h3>
-    <ol class="steps">
-      {% for item in next_steps.body %}<li>{{ item }}</li>{% endfor %}
+    <ol class="steps checklist" data-checklist="steps-{{ idea.token }}">
+      {% for item in next_steps.body %}<li><label><input type="checkbox" /><span>{{ item }}</span></label></li>{% endfor %}
     </ol>
     {% endif %}
     <p class="muted">Written by Chef from your answers and logged conversations. Not scored.</p>
   </div>
   {% else %}
-    {% if step == "open" and not paused %}
+    {% if jev_used >= jev_budget %}
+    <div class="session-over">
+      <span class="session-over-icon">{{ icon("clock") }}</span>
+      <p>This idea has used its whole Jev budget ({{ jev_budget }} scores), so new answers and gates won't be scored. You can still log facts and conversations and write your starter pack.</p>
+      <a class="secondary" href="#pack">{{ icon("arrow-down") }}<span>Starter pack</span></a>
+    </div>
+    {% elif step == "open" and not paused %}
     <form class="composer" method="post" action="{{ url_for('answer', token=idea.token) }}">
-      <label>
-        Your answer
-        <textarea name="answer" maxlength="{{ limits.answer }}" rows="3" placeholder="{% if head.chef and not head.chef.question %}Session {{ sessions }}: tell Chef what the conversations taught you.{% else %}Names, dates, numbers: things that already happened.{% endif %}" required></textarea>
-      </label>
-      <button class="primary" type="submit" data-busy="Chef is reading…">Send</button>
+      <div class="composer-head">
+        <label for="answer-box">Your answer</label>
+        <button class="reply-to" type="button" data-reply-to hidden>{{ icon("chef") }}<span data-reply-text></span></button>
+      </div>
+      <textarea id="answer-box" name="answer" maxlength="{{ limits.answer }}" rows="3" placeholder="{% if head.chef and not head.chef.question %}Session {{ sessions }}: tell Chef what the conversations taught you.{% else %}Names, dates, numbers: things that already happened.{% endif %}" required data-autosize data-draft data-hints data-main-input></textarea>
+      <div class="composer-foot">
+        <span class="hints" data-tip="Hints from your wording. Jev does the scoring.">
+          <span class="hint" data-hint="who">Who</span>
+          <span class="hint" data-hint="when">When</span>
+          <span class="hint" data-hint="number">How many</span>
+        </span>
+        {{ counter("", limits.answer) }}
+        <span class="kbd-hint" aria-hidden="true"><kbd data-mod>⌘</kbd><kbd>↵</kbd></span>
+        <button class="primary" type="submit" data-busy="Chef is reading…"><span data-label>Send</span>{{ icon("send") }}</button>
+      </div>
     </form>
     {% elif step == "homework" %}
-    <p class="session-over">Session {{ sessions }} is over. Do the homework below and log what people told you to open session {{ sessions + 1 }}.</p>
+    <div class="session-over">
+      <span class="session-over-icon">{{ icon("clock") }}</span>
+      <p>Session {{ sessions }} is over. Do the homework below and log what people told you to open session {{ sessions + 1 }}.</p>
+      <a class="secondary" href="#tasting">{{ icon("arrow-down") }}<span>Homework</span></a>
+    </div>
     {% endif %}
 
     <div class="actions">
       {% if servable %}
       <form method="post" action="{{ url_for('serve_idea', token=idea.token) }}">
-        <button class="primary" type="submit" data-busy="Chef is writing…">Serve it</button>
+        <button class="primary primary-serve" type="submit" data-busy="Chef is writing…">{{ icon("cloche") }}<span data-label>Serve it</span></button>
       </form>
       {% elif verdict and verdict.label == "PROVEN" %}
-      <span class="muted">PROVEN in the interview. Log {{ serve_min_logs - evidence|length }} more real conversation{% if serve_min_logs - evidence|length != 1 %}s{% endif %} to serve it.</span>
+      <span class="muted">PROVEN in the interview. Log {{ serve_min_logs - talks|length }} more real conversation{% if serve_min_logs - talks|length != 1 %}s{% endif %} to serve it.</span>
       {% endif %}
       {% if idea.status == "parked" %}
-      <span class="muted">Parked. Send an answer to pick it back up.</span>
+      <span class="muted parked-note">{{ icon("pause") }}<span>Parked. Send an answer to pick it back up.</span></span>
       {% else %}
       <form method="post" action="{{ url_for('park', token=idea.token) }}">
-        <button class="secondary" type="submit">Save and stop</button>
+        <button class="secondary" type="submit">{{ icon("pause") }}<span>Save and stop</span></button>
       </form>
       {% endif %}
     </div>
   {% endif %}
 </section>
 
+{% set talk_form = evidence_form if evidence_form.get("kind") != "fact" else {} %}
+{% set fact_form = evidence_form if evidence_form.get("kind") == "fact" else {} %}
 {% if idea.status != "binned" %}
 <section class="panel tasting" id="tasting">
   <div class="section-head">
-    <h2>Tasting: real conversations</h2>
-    <p>{{ gate.logs|length }} logged this session · {{ evidence|length }} total</p>
+    <h2>{{ icon("spoon") }}Tasting: facts and conversations</h2>
+    <p>{{ gate.logs|length }} logged this session · {{ talks|length }} talk{% if talks|length != 1 %}s{% endif %} · {{ evidence|length - talks|length }} fact{% if evidence|length - talks|length != 1 %}s{% endif %}</p>
   </div>
 
   {% if homework and not closed %}
   <div class="homework">
-    <h3>Homework from Chef</h3>
-    <p class="muted">Talk to:</p>
-    <ul>{% for person in homework.people %}<li>{{ person }}</li>{% endfor %}</ul>
-    <p class="muted">Ask about what they did, not what they would do:</p>
-    <ul>{% for question in homework.questions %}<li>{{ question }}</li>{% endfor %}</ul>
+    <h3>{{ icon("chef") }}Homework from Chef</h3>
+    <div class="homework-grid">
+      <div>
+        <p class="muted">Talk to:</p>
+        <ul class="checklist" data-checklist="people-{{ idea.token }}-{{ sessions }}">{% for person in homework.people %}<li><label><input type="checkbox" /><span>{{ person }}</span></label></li>{% endfor %}</ul>
+      </div>
+      <div>
+        <p class="muted">Ask about what they did, not what they would do:</p>
+        <ul class="questions">{% for question in homework.questions %}<li><button class="question" type="button" data-copy-self>{{ icon("copy") }}<span>{{ question }}</span></button></li>{% endfor %}</ul>
+      </div>
+    </div>
   </div>
   {% elif not closed %}
-  <p class="muted">Logged conversations are what make a verdict hard to fake. Log 3 or more to ask for the gate; passing it opens another grill session.</p>
+  <p class="muted">{% if starter_gate %}Start with facts: let Chef search the web, keep what's useful, then ask a few people you know. Any three facts or conversations open your first gate.{% else %}Logged conversations are what make a verdict hard to fake. Log 3 or more to ask for the gate; passing it opens another grill session.{% endif %}</p>
+  {% endif %}
+
+  {% if not closed %}
+  <div class="scout">
+    <div class="scout-head">
+      <div>
+        <h3>{{ icon("search") }}Find facts</h3>
+        <p class="muted">Chef searches the web for competitors, prices, and complaints. Facts show there is a market; conversations prove the pain.</p>
+      </div>
+      {% if can_search %}
+      <button class="secondary" type="button" hx-post="{{ url_for('search_facts', token=idea.token) }}" hx-target="#facts" hx-swap="innerHTML" hx-indicator="#facts">{{ icon("sparkles") }}<span>Search the web</span></button>
+      {% endif %}
+    </div>
+    <div id="facts" class="facts" aria-live="polite"></div>
+  </div>
   {% endif %}
 
   {% if gate.latest %}
-  <div class="gate gate-{{ gate.latest.label|lower }}">
+  {% set gate_icons = {"PASSED": "check", "SENT_BACK": "rotate", "PENDING": "clock"} %}
+  <div class="gate gate-{{ gate.latest.label|lower }}"{% if gate.latest.label == "PASSED" %} data-celebrate="gate-{{ idea.token }}-{{ gate.latest.session }}"{% endif %}>
     <div class="gate-head">
+      <span class="gate-badge">{{ icon(gate_icons[gate.latest.label]) }}</span>
       <strong>Gate, session {{ gate.latest.session }}: {{ {"PASSED": "Passed", "SENT_BACK": "Sent back", "PENDING": "Not scored"}[gate.latest.label] }}</strong>
     </div>
     <p>{{ gate.latest.explanation }}</p>
@@ -222,38 +308,66 @@
   {% if evidence %}
   <ol class="logs">
     {% for entry in evidence|reverse %}
+    {% if entry.kind == "fact" %}
+    <li class="log log-fact">
+      <div class="log-meta"><span>Fact · {{ entry.spoken_on }}</span><span>session {{ entry.session }}</span></div>
+      <p class="log-quote">{{ entry.quote }}</p>
+      <p class="log-source"><a href="{{ entry.source }}" target="_blank" rel="noopener noreferrer">{{ icon("link") }}<span>{{ entry.who }}</span></a></p>
+    </li>
+    {% else %}
     <li class="log">
-      <div class="log-meta">{{ entry.spoken_on }} · session {{ entry.session }}</div>
-      <p><strong>{{ entry.who }}</strong>{% if entry.role %}, {{ entry.role }}{% endif %}</p>
+      <div class="log-meta"><span>{{ entry.spoken_on }}</span><span>session {{ entry.session }}</span></div>
+      <p class="log-who"><span class="avatar avatar-small" aria-hidden="true">{{ entry.who[:1]|upper }}</span><span><strong>{{ entry.who }}</strong>{% if entry.role %}, {{ entry.role }}{% endif %}</span></p>
       <p class="log-quote">“{{ entry.quote }}”</p>
       {% if entry.today_they %}<p class="muted">Does today: {{ entry.today_they }}</p>{% endif %}
       {% if entry.paid %}<p class="muted">Pays today: {{ entry.paid }}</p>{% endif %}
     </li>
+    {% endif %}
     {% endfor %}
   </ol>
   {% endif %}
 
   {% if not closed %}
   <form class="log-form" method="post" action="{{ url_for('log_evidence', token=idea.token) }}">
-    {% if evidence_error %}<p class="error" role="alert">{{ evidence_error }}</p>{% endif %}
+    <h3>{{ icon("message") }}Log a conversation</h3>
+    {% if evidence_error and not fact_form %}<p class="error" role="alert">{{ evidence_error }}</p>{% endif %}
     <div class="log-grid">
-      <label>Who you talked to <input name="who" maxlength="{{ limits.who }}" value="{{ evidence_form.who }}" placeholder="Marta, 2nd-year BBA" required /></label>
-      <label>Their role <input name="role" maxlength="{{ limits.role }}" value="{{ evidence_form.role }}" placeholder="Sells books every term" /></label>
-      <label>Date <input name="spoken_on" type="date" max="{{ today }}" value="{{ evidence_form.spoken_on or today }}" required /></label>
-      <label>What they pay today <input name="paid" maxlength="{{ limits.paid }}" value="{{ evidence_form.paid }}" placeholder="€85 per book at the campus store" /></label>
+      <label class="field"><span class="field-head"><span>Who you talked to</span>{{ counter(talk_form.who, limits.who) }}</span><input name="who" maxlength="{{ limits.who }}" value="{{ talk_form.who }}" placeholder="Marta, 2nd-year BBA" required data-draft /></label>
+      <label class="field"><span class="field-head"><span>Their role</span>{{ counter(talk_form.role, limits.role) }}</span><input name="role" maxlength="{{ limits.role }}" value="{{ talk_form.role }}" placeholder="Sells books every term" data-draft /></label>
+      <div class="field">
+        <span class="field-head"><label for="spoken-on">Date</label><span class="date-chips"><button type="button" data-date="0" data-date-for="spoken-on">Today</button><button type="button" data-date="-1" data-date-for="spoken-on">Yesterday</button></span></span>
+        <input id="spoken-on" name="spoken_on" type="date" max="{{ today }}" value="{{ talk_form.spoken_on or today }}" required />
+      </div>
+      <label class="field"><span class="field-head"><span>What they pay today</span>{{ counter(talk_form.paid, limits.paid) }}</span><input name="paid" maxlength="{{ limits.paid }}" value="{{ talk_form.paid }}" placeholder="€85 per book at the campus store" data-draft /></label>
     </div>
-    <label>What they do about it today <input name="today_they" maxlength="{{ limits.today_they }}" value="{{ evidence_form.today_they }}" placeholder="Posts in the WhatsApp group, waits weeks" /></label>
-    <label>What they said <textarea name="quote" maxlength="{{ limits.quote }}" rows="2" placeholder="Their words, about something that already happened." required>{{ evidence_form.quote }}</textarea></label>
-    <button class="secondary" type="submit">Log conversation</button>
+    <label class="field"><span class="field-head"><span>What they do about it today</span>{{ counter(talk_form.today_they, limits.today_they) }}</span><input name="today_they" maxlength="{{ limits.today_they }}" value="{{ talk_form.today_they }}" placeholder="Posts in the WhatsApp group, waits weeks" data-draft /></label>
+    <label class="field"><span class="field-head"><span>What they said</span>{{ counter(talk_form.quote, limits.quote) }}</span><textarea name="quote" maxlength="{{ limits.quote }}" rows="2" placeholder="Their words, about something that already happened." required data-autosize data-draft>{{ talk_form.quote }}</textarea></label>
+    <button class="secondary" type="submit" data-busy="Logging…">{{ icon("message") }}<span data-label>Log conversation</span></button>
   </form>
 
-  <div class="actions">
+  <details class="add-fact" id="add-fact"{% if fact_form %} open{% endif %}>
+    <summary>{{ icon("link") }}<span>Found something yourself? Add a fact with its link</span></summary>
+    <form class="log-form fact-form" method="post" action="{{ url_for('log_evidence', token=idea.token) }}">
+      <input type="hidden" name="kind" value="fact" />
+      <input type="hidden" name="spoken_on" value="{{ today }}" />
+      {% if evidence_error and fact_form %}<p class="error" role="alert">{{ evidence_error }}</p>{% endif %}
+      <label class="field"><span class="field-head"><span>What you found</span>{{ counter(fact_form.quote, limits.fact) }}</span><textarea name="quote" maxlength="{{ limits.fact }}" rows="2" placeholder="Students pay €3.99 delivery on orders under €15 at the main delivery app." required data-autosize>{{ fact_form.quote }}</textarea></label>
+      <div class="log-grid">
+        <label class="field"><span class="field-head"><span>Source link</span></span><input name="source" type="url" maxlength="{{ limits.source }}" value="{{ fact_form.source }}" placeholder="https://..." required /></label>
+        <label class="field"><span class="field-head"><span>Where (optional)</span>{{ counter(fact_form.who, limits.who) }}</span><input name="who" maxlength="{{ limits.who }}" value="{{ fact_form.who }}" placeholder="the site or report" /></label>
+      </div>
+      <button class="secondary" type="submit" data-busy="Saving…">{{ icon("link") }}<span data-label>Add fact</span></button>
+    </form>
+  </details>
+
+  <div class="actions gate-actions">
+    <span class="plates" aria-hidden="true">{% for n in range(3) %}<i{% if n < gate.logs|length %} class="on"{% endif %}>{{ icon("check") }}</i>{% endfor %}</span>
     {% if gate.ready %}
     <form method="post" action="{{ url_for('gate', token=idea.token) }}">
-      <button class="primary" type="submit" data-busy="Jev is tasting…">Ask for the gate</button>
+      <button class="primary" type="submit" data-busy="Jev is tasting…">{{ icon("spoon") }}<span data-label>Ask for the gate</span></button>
     </form>
     {% elif gate.logs|length < 3 %}
-    <span class="muted">{{ 3 - gate.logs|length }} more this session to ask for the gate.</span>
+    <span class="muted">{{ 3 - gate.logs|length }} more this session to ask for the gate.{% if starter_gate %} Facts count.{% endif %}</span>
     {% else %}
     <span class="muted">Log a new conversation to try the gate again.</span>
     {% endif %}
@@ -261,4 +375,43 @@
   {% endif %}
 </section>
 {% endif %}
+
+<section class="panel pack" id="pack">
+  <div class="section-head">
+    <h2>{{ icon("receipt") }}Starter pack for Claude Code</h2>
+    <p><span class="pack-badge pack-badge-{{ 'verified' if verified else 'draft' }}">{{ "Verified" if verified else "Draft" }}</span></p>
+  </div>
+  <p class="muted">{% if verified %}Served with {{ talks|length }} real conversations behind it. Take it into Claude Code and build version one.{% else %}One Markdown file to start building with Claude Code: the problem, your evidence with its sources, what to build first, and every assumption still to test. It becomes verified when this idea is served.{% endif %}</p>
+  {% if pack_error %}<p class="error" role="alert">{{ pack_error }}</p>{% endif %}
+  {% if pack %}
+  <div class="pack-preview">
+    <div>
+      <h3>Version one</h3>
+      <ol>{% for item in pack.mvp %}<li><strong>{{ item.feature }}.</strong> {{ item.why }}</li>{% endfor %}</ol>
+    </div>
+    <div>
+      <h3>First tasks</h3>
+      <ol>{% for task in pack.tasks[:4] %}<li>{{ task }}</li>{% endfor %}</ol>
+    </div>
+  </div>
+  <div class="pack-prompt">
+    <div class="pack-prompt-head">
+      <span>First prompt for Claude Code</span>
+      <button class="tool" type="button" data-copy="#claude-prompt" data-copy-message="Prompt copied. Paste it into Claude Code.">{{ icon("copy") }}<span>Copy</span></button>
+    </div>
+    <pre id="claude-prompt">{{ pack.claude_prompt }}</pre>
+  </div>
+  {% if pack_stale %}<p class="pack-stale">{{ icon("rotate") }}<span>You have answered, logged, or been served since Chef wrote this. Rewrite it to include that.</span></p>{% endif %}
+  <div class="actions">
+    <a class="primary" href="{{ url_for('starter_pack', token=idea.token) }}" download hx-boost="false">{{ icon("arrow-down") }}<span>Download starter-pack.md</span></a>
+    <form method="post" action="{{ url_for('write_starter_pack', token=idea.token) }}">
+      <button class="secondary" type="submit" data-busy="Chef is writing…">{{ icon("rotate") }}<span data-label>Rewrite it</span></button>
+    </form>
+  </div>
+  {% else %}
+  <form method="post" action="{{ url_for('write_starter_pack', token=idea.token) }}">
+    <button class="primary" type="submit" data-busy="Chef is writing…">{{ icon("sparkles") }}<span data-label>Write my starter pack</span></button>
+  </form>
+  {% endif %}
+</section>
 {% endblock %}

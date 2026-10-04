@@ -1,9 +1,11 @@
 from datetime import date
 
-from flask import abort, redirect, render_template, request, url_for
+from flask import Response, abort, redirect, render_template, request, url_for
 
 from pitchkitchen.db import connect
 from pitchkitchen.ideas.logic import (
+    DEFAULT_LEVEL,
+    LEVELS,
     LIMITS,
     TONES,
     IdeaClosed,
@@ -28,23 +30,34 @@ from pitchkitchen.ideas.store import (
     set_station,
     set_status,
 )
-from pitchkitchen.review.coach import ChefUnavailable, suggest_one_liners
-from pitchkitchen.review.logic import SERVE_MIN_LOGS, answers_left, can_serve
+from pitchkitchen.pack import render_pack
+from pitchkitchen.review.coach import ChefUnavailable, find_facts, suggest_one_liners, suggest_searches, suggest_sparks
+from pitchkitchen.review.logic import (
+    SERVE_MIN_LOGS,
+    SESSION_ANSWERS,
+    STARTER_LEVELS,
+    answers_left,
+    can_serve,
+    starter_gate,
+)
 from pitchkitchen.review.service import (
     GateNotReady,
     NotServable,
+    conversations,
     gate_status,
     run_gate,
     run_round,
     serve,
     sessions_for,
     step_for,
+    write_pack,
 )
 from pitchkitchen.review.store import (
     chef_for,
     forget,
     jev_calls_used,
     latest_homework,
+    latest_of,
     verdicts_for,
 )
 
@@ -57,7 +70,7 @@ BOARDS = (
     ("binned", "Binned", ("binned",)),
 )
 
-EVIDENCE_FIELDS = ("who", "role", "spoken_on", "today_they", "paid", "quote")
+EVIDENCE_FIELDS = ("kind", "who", "role", "spoken_on", "today_they", "paid", "quote", "source")
 
 
 def register_routes(app):
@@ -83,6 +96,7 @@ def register_routes(app):
             chef_transport=app.config.get("CHEF_TRANSPORT"),
             idea_id=idea["id"],
             tone=idea["tone"],
+            level=idea["level"],
         )
         if result["step"] == "binned":
             set_status(connection, idea["id"], "binned")
@@ -114,11 +128,14 @@ def register_routes(app):
             form=form,
             limits=LIMITS,
             tones=TONES,
+            levels=LEVELS,
             can_suggest=bool(app.config.get("COACH_API_KEY")),
         )
         return page, status
 
-    def render_idea(connection, idea, error=None, status=200, evidence_form=None, evidence_error=None):
+    def render_idea(
+        connection, idea, error=None, status=200, evidence_form=None, evidence_error=None, pack_error=None
+    ):
         ids = [revision["id"] for revision in idea["branch"]]
         found = verdicts_for(connection, ids)
         chef = chef_for(connection, ids)
@@ -137,9 +154,15 @@ def register_routes(app):
         elif head["chef"] is None or (step == "homework" and "homework" not in head_chef):
             paused = "chef"
         evidence = evidence_for(connection, idea["id"])
+        talks = conversations(evidence)
         gate = gate_status(connection, idea["id"], evidence)
         pivot_from = get_idea(connection, idea["pivot_of"]) if idea["pivot_of"] else None
         label = head["verdict"]["label"] if head["verdict"] else "PENDING"
+        verified = idea["status"] == "served"
+        pack = latest_of(connection, ids, "starter_pack")
+        pack_stale = pack is not None and (
+            pack["revision_id"] != head["id"] or pack["body"]["logs"] != len(evidence) or pack["body"]["verified"] != verified
+        )
         page = render_template(
             "idea.html",
             idea=idea,
@@ -153,10 +176,19 @@ def register_routes(app):
             polished=head_chef.get("polished"),
             next_steps=head_chef.get("next_steps"),
             answers_left=answers_left(len(ids) - 1, sessions),
+            session_answers=SESSION_ANSWERS,
             evidence=evidence,
+            talks=talks,
             gate=gate,
-            servable=can_serve(label, len(evidence)),
+            servable=can_serve(label, len(talks)),
             serve_min_logs=SERVE_MIN_LOGS,
+            starter=idea["level"] in STARTER_LEVELS,
+            starter_gate=starter_gate(idea["level"], sessions),
+            can_search=bool(app.config.get("COACH_API_KEY")),
+            verified=verified,
+            pack=pack["body"] if pack else None,
+            pack_stale=pack_stale,
+            pack_error=pack_error,
             pivot_from=pivot_from,
             jev_used=jev_calls_used(connection, idea["id"]),
             jev_budget=app.config["JEV_BUDGET_PER_IDEA"],
@@ -190,6 +222,7 @@ def register_routes(app):
                     one_liner=pitch["one_liner"],
                     story=pitch["story"],
                     tone=source["tone"],
+                    level=source["level"],
                     pivot=source["token"],
                     pivot_title=pitch["one_liner"],
                 )
@@ -214,7 +247,24 @@ def register_routes(app):
             )
         except ChefUnavailable:
             return render_template("_suggestions.html", error="Chef is busy. Try again in a moment.", suggestions=[])
-        return render_template("_suggestions.html", error=None, suggestions=suggestions)
+        return render_template("_suggestions.html", error=None, suggestions=[{"one_liner": text} for text in suggestions])
+
+    @app.post("/prep/spark")
+    def spark():
+        about = request.form.get("about", "").strip()
+        if not about:
+            return render_template("_suggestions.html", error="Tell Chef a little about your week first.", suggestions=[])
+        try:
+            sparks = suggest_sparks(
+                about[:2000],
+                app.config.get("COACH_API_KEY", ""),
+                app.config["COACH_MODEL"],
+                app.config["COACH_URL"],
+                transport=app.config.get("CHEF_TRANSPORT"),
+            )
+        except ChefUnavailable:
+            return render_template("_suggestions.html", error="Chef is busy. Try again in a moment.", suggestions=[])
+        return render_template("_suggestions.html", error=None, suggestions=sparks)
 
     @app.post("/ideas")
     def create():
@@ -232,6 +282,7 @@ def register_routes(app):
                     shared=form["shared"],
                     pivot_of=pivot["id"] if pivot else None,
                     consent=form["consent"],
+                    level=form["level"],
                 )
             except IdeaTextError as error:
                 return render_home(connection, error.message, form, 400)
@@ -320,6 +371,118 @@ def register_routes(app):
             connection.close()
         return redirect(url_for("idea_detail", token=token) + "#tasting")
 
+    @app.post("/i/<token>/facts/search")
+    def search_facts(token):
+        connection = connect(app.config["DATABASE"])
+        try:
+            idea = load(connection, token)
+            kept = {entry["quote"] for entry in evidence_for(connection, idea["id"]) if entry["kind"] == "fact"}
+        finally:
+            connection.close()
+        pitch = idea["branch"][0]
+        try:
+            facts = find_facts(
+                pitch["one_liner"],
+                pitch["story"],
+                app.config.get("COACH_API_KEY", ""),
+                app.config["COACH_MODEL"],
+                transport=app.config.get("SEARCH_TRANSPORT"),
+            )
+        except ChefUnavailable:
+            try:
+                searches = suggest_searches(
+                    pitch["one_liner"],
+                    pitch["story"],
+                    app.config.get("COACH_API_KEY", ""),
+                    app.config["COACH_MODEL"],
+                    app.config["COACH_URL"],
+                    transport=app.config.get("CHEF_TRANSPORT"),
+                )
+            except ChefUnavailable:
+                return render_template(
+                    "_facts.html", idea=idea, facts=[], error="Chef couldn't search the web or suggest searches right now. Try again later."
+                )
+            return render_template("_facts.html", idea=idea, facts=[], searches=searches, error=None)
+        fresh = [fact for fact in facts if fact["fact"] not in kept]
+        if not fresh:
+            return render_template("_facts.html", idea=idea, facts=[], error="Chef found nothing new. You already kept these facts.")
+        return render_template("_facts.html", idea=idea, facts=fresh, error=None)
+
+    @app.post("/i/<token>/facts")
+    def keep_facts(token):
+        """Facts from a search are not stored until the founder ticks them; each comes back
+        with its text, link, and site as numbered form fields."""
+        today = (app.config.get("TODAY") or date.today()).isoformat()
+        picked = [
+            {
+                "kind": "fact",
+                "quote": request.form.get("fact_" + number, ""),
+                "source": request.form.get("source_" + number, ""),
+                "who": request.form.get("site_" + number, ""),
+                "spoken_on": today,
+            }
+            for number in request.form.getlist("keep")
+        ]
+        connection = connect(app.config["DATABASE"])
+        try:
+            idea = load(connection, token)
+            if not picked:
+                return render_idea(
+                    connection, idea, status=400, evidence_form={"kind": "fact"}, evidence_error="Tick at least one fact to keep."
+                )
+            try:
+                for fields in picked:
+                    add_evidence(connection, idea["id"], sessions_for(connection, idea["id"]), fields, today=app.config.get("TODAY"))
+            except IdeaClosed:
+                return render_idea(connection, idea, "This idea is closed.", 409)
+            except IdeaTextError as error:
+                return render_idea(connection, idea, status=400, evidence_form={"kind": "fact"}, evidence_error=error.message)
+        finally:
+            connection.close()
+        return redirect(url_for("idea_detail", token=token) + "#tasting")
+
+    @app.post("/i/<token>/pack")
+    def write_starter_pack(token):
+        connection = connect(app.config["DATABASE"])
+        try:
+            idea = load(connection, token)
+            try:
+                write_pack(
+                    connection,
+                    [revision["id"] for revision in idea["branch"]],
+                    snapshot(connection, idea),
+                    settings(),
+                    idea["status"] == "served",
+                    chef_transport=app.config.get("CHEF_TRANSPORT"),
+                )
+            except ChefUnavailable:
+                return render_idea(connection, idea, status=503, pack_error="Chef stepped out before writing your starter pack. Try again.")
+        finally:
+            connection.close()
+        return redirect(url_for("idea_detail", token=token) + "#pack")
+
+    @app.get("/i/<token>/starter-pack.md")
+    def starter_pack(token):
+        connection = connect(app.config["DATABASE"])
+        try:
+            idea = load(connection, token)
+            stored = latest_of(connection, [revision["id"] for revision in idea["branch"]], "starter_pack")
+            logs = evidence_for(connection, idea["id"])
+        finally:
+            connection.close()
+        if stored is None:
+            return redirect(url_for("idea_detail", token=token) + "#pack")
+        text = render_pack(
+            idea["branch"][0]["one_liner"],
+            idea["display_name"],
+            logs,
+            stored["body"],
+            stored["body"]["verified"],
+            stored["created_at"][:10],
+            needed=SERVE_MIN_LOGS,
+        )
+        return Response(text, mimetype="text/markdown", headers={"Content-Disposition": 'attachment; filename="starter-pack.md"'})
+
     @app.post("/i/<token>/gate")
     def gate(token):
         connection = connect(app.config["DATABASE"])
@@ -335,6 +498,7 @@ def register_routes(app):
                     snapshot(connection, idea),
                     settings(),
                     jev_transport=app.config.get("JEV_TRANSPORT"),
+                    starter=starter_gate(idea["level"], sessions_for(connection, idea["id"])),
                 )
             except GateNotReady:
                 return render_idea(connection, idea, "Log at least 3 conversations this session, or a new one since the last try.", 409)
@@ -430,6 +594,7 @@ def _pitch_form(source=None):
         "one_liner": source.get("one_liner", ""),
         "story": source.get("story", ""),
         "tone": source.get("tone", "") or "tough",
+        "level": source.get("level", "") or DEFAULT_LEVEL,
         "shared": source.get("shared") == "on",
         "consent": source.get("consent") == "on",
         "pivot": source.get("pivot", ""),
