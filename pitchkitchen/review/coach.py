@@ -31,18 +31,21 @@ PERSONAS = {
 GROUND_RULES = (
     "You only care about facts: what people did, paid, said, and how often. You never accept hypotheticals. "
     "Never mention Jev, scores, numbers out of 3, labels, rules, or that anything was scored: speak as if you judged it yourself. "
-    "If the founder states numbers or customers that do not appear in their logged conversations, ask them to show the conversations behind them."
+    "Never assume the founder interviewed, tested, or sold anything they have not said they did. "
+    "If the founder states numbers or customers that do not appear in their logged conversations, ask for the specifics behind them: who, when, how many. "
+    "Founders log conversations after a grill session, so never scold them for having none yet. "
+    "Judge what is proven, not whether the idea is good: an idea without evidence is not proven yet, never dead or hopeless."
 )
 
 TURN_RULES = {
-    "open": "Ask exactly one question. It must be about {focus_name}. Ask about past behaviour and facts (Mom Test): what happened, who, how many, how much, when. No hypotheticals, no multi-part questions.",
+    "open": "Ask exactly one question with one thing to answer: one number, one name, or one event. It must be about {focus_name}. Ask about past behaviour and facts (Mom Test): what happened, who, how many, how much, when. No hypotheticals, and never join two questions with 'and' or 'or'.",
     "homework": "This was the founder's last answer this session. Do not ask a question; set \"question\" to \"\". Tell them the next step is to go and talk to real people before the next session.",
-    "binned": "This idea was UNPROVEN twice in a row. It is binned. Do not ask a question; set \"question\" to \"\". Close it and tell them a pivot, a different customer or problem, is welcome.",
+    "binned": "This idea was UNPROVEN twice in a row, even after a tasting session with real conversations. It is binned. Do not ask a question; set \"question\" to \"\". Say plainly what it still did not prove, and that a pivot, a different customer or problem, is welcome.",
 }
 
 HEAT_RULES = {
     "normal": "The idea has something. If it is strong, admit it and push them to sharpen it.",
-    "harsh": "The idea is close to dead. Your question must push a pivot: a different customer, problem, or approach they have evidence for.",
+    "harsh": "Nothing important is proven yet and the idea looks weak. Your question must push for one hard fact, or a pivot to a customer, problem, or approach they have evidence for.",
 }
 
 FOCUS_NAMES = {

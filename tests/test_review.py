@@ -30,9 +30,11 @@ def test_an_average_under_one_point_two_is_unproven():
     assert decide(1.2, 1.2, 1.2, 0.1, 0.9) == ("PARTIAL", "below_cutoff")
 
 
-def test_a_dodged_question_is_partial_even_with_strong_scores():
+def test_a_dodged_question_is_partial_whatever_the_scores():
     assert decide(3, 3, 3, 0.0, 0.95, evidence=3, answered=0.2) == ("PARTIAL", "dodged")
+    assert decide(0.99, 1.0, 0.45, 0.06, 0.01, evidence=0.06, answered=0.07) == ("PARTIAL", "dodged")
     assert decide(3, 3, 3, 0.0, 0.95, evidence=3, answered=0.5)[0] == "PROVEN"
+    assert decide(1, 1, 1, 0.9, 0.5, answered=0.1) == ("UNPROVEN", "safety_veto")
 
 
 def test_the_pitch_is_not_checked_for_answering_a_question():
