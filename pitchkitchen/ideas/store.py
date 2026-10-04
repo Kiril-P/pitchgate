@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pitchkitchen.ideas.logic import (
     AFTER_PITCH,
     CLOSED,
+    DEFAULT_LEVEL,
     DEFAULT_TONE,
     EVIDENCE_PER_SESSION,
     IdeaClosed,
@@ -12,6 +13,7 @@ from pitchkitchen.ideas.logic import (
     clean_answer,
     clean_consent,
     clean_evidence,
+    clean_level,
     clean_pitch,
     clean_tone,
     current_head,
@@ -28,6 +30,7 @@ CREATE TABLE IF NOT EXISTS ideas (
         CHECK (station IN ('prep', 'grill', 'tasting', 'plating', 'recipe', 'mise', 'takeaway')),
     token TEXT,
     tone TEXT NOT NULL DEFAULT 'tough' CHECK (tone IN ('supportive', 'tough', 'ramsay')),
+    level TEXT NOT NULL DEFAULT 'idea' CHECK (level IN ('new', 'idea', 'tested')),
     pivot_of INTEGER,
     shared INTEGER NOT NULL DEFAULT 0 CHECK (shared IN (0, 1)),
     consent_at TEXT,
@@ -56,36 +59,46 @@ CREATE TABLE IF NOT EXISTS evidence (
     id INTEGER PRIMARY KEY,
     idea_id INTEGER NOT NULL REFERENCES ideas(id),
     session INTEGER NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'conversation' CHECK (kind IN ('conversation', 'fact')),
     who TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT '',
     spoken_on TEXT NOT NULL,
     today_they TEXT NOT NULL DEFAULT '',
     paid TEXT NOT NULL DEFAULT '',
     quote TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 """
 
-NEW_IDEA_COLUMNS = {
-    "status": "TEXT NOT NULL DEFAULT 'cooking'",
-    "station": "TEXT NOT NULL DEFAULT 'grill'",
-    "token": "TEXT",
-    "tone": "TEXT NOT NULL DEFAULT 'tough'",
-    "pivot_of": "INTEGER",
-    "shared": "INTEGER NOT NULL DEFAULT 0",
-    "consent_at": "TEXT",
+NEW_COLUMNS = {
+    "ideas": {
+        "status": "TEXT NOT NULL DEFAULT 'cooking'",
+        "station": "TEXT NOT NULL DEFAULT 'grill'",
+        "token": "TEXT",
+        "tone": "TEXT NOT NULL DEFAULT 'tough'",
+        "level": "TEXT NOT NULL DEFAULT 'idea'",
+        "pivot_of": "INTEGER",
+        "shared": "INTEGER NOT NULL DEFAULT 0",
+        "consent_at": "TEXT",
+    },
+    "evidence": {
+        "kind": "TEXT NOT NULL DEFAULT 'conversation'",
+        "source": "TEXT NOT NULL DEFAULT ''",
+    },
 }
 
 COLUMNS = "id, idea_id, parent_id, kind, one_liner, story, answer, created_at"
-IDEA_COLUMNS = "id, display_name, status, station, token, tone, pivot_of, shared, created_at"
+IDEA_COLUMNS = "id, display_name, status, station, token, tone, level, pivot_of, shared, created_at"
 
 
 def ensure_schema(connection):
     connection.executescript(SCHEMA)
-    columns = [row["name"] for row in connection.execute("PRAGMA table_info(ideas)")]
-    for name, definition in NEW_IDEA_COLUMNS.items():
-        if name not in columns:
-            connection.execute("ALTER TABLE ideas ADD COLUMN " + name + " " + definition)
+    for table, wanted in NEW_COLUMNS.items():
+        columns = [row["name"] for row in connection.execute("PRAGMA table_info(" + table + ")")]
+        for name, definition in wanted.items():
+            if name not in columns:
+                connection.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + definition)
     for row in connection.execute("SELECT id FROM ideas WHERE token IS NULL").fetchall():
         connection.execute("UPDATE ideas SET token = ? WHERE id = ?", (new_token(), row["id"]))
     connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS ideas_token ON ideas(token)")
@@ -101,18 +114,28 @@ def utc_now():
 
 
 def create_idea(
-    connection, display_name, one_liner, story, now=None, tone=DEFAULT_TONE, shared=False, pivot_of=None, consent=True
+    connection,
+    display_name,
+    one_liner,
+    story,
+    now=None,
+    tone=DEFAULT_TONE,
+    shared=False,
+    pivot_of=None,
+    consent=True,
+    level=DEFAULT_LEVEL,
 ):
     text = clean_pitch(display_name, one_liner, story)
     tone = clean_tone(tone)
+    level = clean_level(level)
     clean_consent(consent)
     created_at = now or utc_now()
     cursor = connection.execute(
         """
-        INSERT INTO ideas (display_name, station, token, tone, pivot_of, shared, consent_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO ideas (display_name, station, token, tone, level, pivot_of, shared, consent_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (text["display_name"], AFTER_PITCH, new_token(), tone, pivot_of, 1 if shared else 0, created_at, created_at),
+        (text["display_name"], AFTER_PITCH, new_token(), tone, level, pivot_of, 1 if shared else 0, created_at, created_at),
     )
     idea_id = cursor.lastrowid
     connection.execute(
@@ -175,11 +198,11 @@ def add_evidence(connection, idea_id, session, fields, now=None, today=None):
         (idea_id, session),
     ).fetchone()["logged"]
     if logged >= EVIDENCE_PER_SESSION:
-        raise IdeaTextError("who", "This session already has " + str(EVIDENCE_PER_SESSION) + " conversations. Ask for the gate.")
+        raise IdeaTextError("who", "This session already has " + str(EVIDENCE_PER_SESSION) + " logs. Ask for the gate.")
     connection.execute(
         """
-        INSERT INTO evidence (idea_id, session, who, role, spoken_on, today_they, paid, quote, created_at)
-        VALUES (:idea_id, :session, :who, :role, :spoken_on, :today_they, :paid, :quote, :created_at)
+        INSERT INTO evidence (idea_id, session, kind, who, role, spoken_on, today_they, paid, quote, source, created_at)
+        VALUES (:idea_id, :session, :kind, :who, :role, :spoken_on, :today_they, :paid, :quote, :source, :created_at)
         """,
         dict(entry, idea_id=idea_id, session=session, created_at=now or utc_now()),
     )
@@ -257,13 +280,14 @@ def list_ideas(connection):
     for row in connection.execute("SELECT " + COLUMNS + " FROM revisions ORDER BY id").fetchall():
         by_idea.setdefault(row["idea_id"], []).append(_revision(row))
     logs = {}
-    for row in connection.execute("SELECT idea_id, created_at FROM evidence ORDER BY id").fetchall():
-        logs.setdefault(row["idea_id"], []).append(row["created_at"])
+    for row in connection.execute("SELECT idea_id, kind, created_at FROM evidence ORDER BY id").fetchall():
+        logs.setdefault(row["idea_id"], []).append(row)
 
     listed = []
     for idea in ideas:
         revisions = by_idea[idea["id"]]
         branch = walk_branch(revisions, current_head(revisions))
+        entries = logs.get(idea["id"], [])
         found = _idea(idea)
         found.update(
             {
@@ -271,8 +295,9 @@ def list_ideas(connection):
                 "answer_count": len(branch) - 1,
                 "head_id": branch[-1]["id"],
                 "branch_ids": [revision["id"] for revision in branch],
-                "evidence_count": len(logs.get(idea["id"], [])),
-                "activity": sorted([r["created_at"] for r in revisions] + logs.get(idea["id"], [])),
+                "evidence_count": sum(1 for entry in entries if entry["kind"] == "conversation"),
+                "fact_count": sum(1 for entry in entries if entry["kind"] == "fact"),
+                "activity": sorted([r["created_at"] for r in revisions] + [entry["created_at"] for entry in entries]),
             }
         )
         listed.append(found)
@@ -287,6 +312,7 @@ def _idea(row):
         "station": row["station"],
         "token": row["token"],
         "tone": row["tone"],
+        "level": row["level"],
         "pivot_of": row["pivot_of"],
         "shared": bool(row["shared"]),
         "created_at": row["created_at"],

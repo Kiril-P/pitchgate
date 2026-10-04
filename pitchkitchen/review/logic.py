@@ -13,6 +13,7 @@ GATE_WINDOW = 5
 GATE_EVIDENCE = 2.0
 GATE_AVERAGE = 1.5
 SERVE_MIN_LOGS = 3
+STARTER_LEVELS = ("new", "idea")
 
 LABELS = ("UNPROVEN", "PARTIAL", "PROVEN", "PENDING")
 GATE_LABELS = ("PASSED", "SENT_BACK", "PENDING")
@@ -39,9 +40,17 @@ def decide(market_need, feasibility, differentiation, safety_risk, confidence, e
     return "PROVEN", "all_clear"
 
 
-def decide_tasting(evidence_strength, pain_frequency, willingness_to_pay, safety_risk):
+def starter_gate(level, session):
+    """A beginner's first gate opens with any three facts or conversations; the scores
+    are still shown, and serving still needs real conversations."""
+    return level in STARTER_LEVELS and session == 1
+
+
+def decide_tasting(evidence_strength, pain_frequency, willingness_to_pay, safety_risk, starter=False):
     if safety_risk > SAFETY_VETO:
         return "SENT_BACK", "gate_safety"
+    if starter:
+        return "PASSED", "gate_starter"
     if evidence_strength < GATE_EVIDENCE:
         return "SENT_BACK", "gate_weak_evidence"
     if (evidence_strength + pain_frequency + willingness_to_pay) / 3 < GATE_AVERAGE:
@@ -128,8 +137,21 @@ def explain(rule):
         "gate_weak_evidence": "The conversations are mostly opinions or compliments, not what people actually did or paid. Sent back.",
         "gate_weak_signal": "The evidence is real, but the pain is rare or nobody spends anything on it today. Sent back.",
         "gate_clear": "Real conversations show a real, frequent problem people already spend on. A new grill session is open.",
+        "gate_starter": "A starter gate: your first three facts or conversations open the next session. The bars show how strong they are; real conversations are what make the starter pack verified.",
     }
     return text[rule]
+
+
+DIMENSION_NAMES = {"market_need": "Market need", "feasibility": "Feasibility", "differentiation": "Differentiation"}
+
+
+def explain_verdict(verdict):
+    """Like explain, but a below_cutoff verdict names which scores are short and what to show next."""
+    if verdict["rule"] != "below_cutoff":
+        return explain(verdict["rule"])
+    short = [DIMENSION_NAMES[name] for name in DIMENSIONS if verdict[name] < PROVEN_SCORE]
+    verb = " is" if len(short) == 1 else " are"
+    return " and ".join(short) + verb + " below Solid, the bar for PROVEN. " + recommend(focus(verdict))
 
 
 def recommend(dimension):

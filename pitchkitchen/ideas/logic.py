@@ -1,4 +1,5 @@
 from datetime import date
+from urllib.parse import urlparse
 
 
 class IdeaTextError(Exception):
@@ -22,13 +23,16 @@ STATUSES = ("cooking", "parked", "served", "binned")
 CLOSED = ("served", "binned")
 TONES = ("supportive", "tough", "ramsay")
 DEFAULT_TONE = "tough"
+LEVELS = ("new", "idea", "tested")
+DEFAULT_LEVEL = "idea"
+EVIDENCE_KINDS = ("conversation", "fact")
 EVIDENCE_PER_SESSION = 10
 
 STATIONS = (
     {"key": "prep", "name": "Prep", "job": "Pitch"},
     {"key": "grill", "name": "Grill", "job": "Interview"},
-    {"key": "tasting", "name": "Tasting", "job": "Real conversations"},
-    {"key": "takeaway", "name": "Served", "job": "Pitch + next steps"},
+    {"key": "tasting", "name": "Tasting", "job": "Facts and conversations"},
+    {"key": "takeaway", "name": "Served", "job": "Pitch + starter pack"},
 )
 STATION_KEYS = tuple(station["key"] for station in STATIONS)
 AFTER_PITCH = "grill"
@@ -44,9 +48,12 @@ LABELS = {
     "today_they": "What they do today",
     "paid": "What they pay today",
     "quote": "What they said",
+    "fact": "What you found",
+    "source": "Source link",
     "spoken_on": "Date",
     "consent": "Consent",
     "tone": "Chef's tone",
+    "level": "Where you are starting",
 }
 
 LIMITS = {
@@ -59,6 +66,8 @@ LIMITS = {
     "today_they": 500,
     "paid": 200,
     "quote": 1000,
+    "fact": 1000,
+    "source": 2000,
 }
 
 
@@ -99,9 +108,21 @@ def clean_consent(consent):
         raise IdeaTextError("consent", "Tick the box to agree that Chef's AI providers and the organizers can read your idea.")
 
 
+def clean_level(level):
+    if not level:
+        return DEFAULT_LEVEL
+    if level not in LEVELS:
+        raise IdeaTextError("level", "Pick where you are starting from.")
+    return level
+
+
 def clean_evidence(fields, today=None):
-    """One logged customer conversation. The date can't be in the future."""
+    """One logged customer conversation, or one fact the founder found, with its source link.
+    The date (spoken to, or found) can't be in the future."""
     today = today or date.today()
+    kind = fields.get("kind") or "conversation"
+    if kind not in EVIDENCE_KINDS:
+        raise IdeaTextError("kind", "Log a conversation or a fact.")
     raw_date = (fields.get("spoken_on") or "").strip()
     try:
         spoken_on = date.fromisoformat(raw_date)
@@ -109,13 +130,29 @@ def clean_evidence(fields, today=None):
         raise IdeaTextError("spoken_on", "Date must be a real date (YYYY-MM-DD).")
     if spoken_on > today:
         raise IdeaTextError("spoken_on", "Log conversations that already happened, not planned ones.")
+    if kind == "fact":
+        source = clean_field("source", fields.get("source"))
+        if not source.startswith(("http://", "https://")):
+            raise IdeaTextError("source", "Source link must start with http:// or https://.")
+        return {
+            "kind": "fact",
+            "who": clean_field("who", fields.get("who"), required=False) or urlparse(source).netloc[:LIMITS["who"]],
+            "role": "",
+            "spoken_on": spoken_on.isoformat(),
+            "today_they": "",
+            "paid": "",
+            "quote": clean_field("fact", fields.get("quote")),
+            "source": source,
+        }
     return {
+        "kind": "conversation",
         "who": clean_field("who", fields.get("who")),
         "role": clean_field("role", fields.get("role"), required=False),
         "spoken_on": spoken_on.isoformat(),
         "today_they": clean_field("today_they", fields.get("today_they"), required=False),
         "paid": clean_field("paid", fields.get("paid"), required=False),
         "quote": clean_field("quote", fields.get("quote")),
+        "source": "",
     }
 
 

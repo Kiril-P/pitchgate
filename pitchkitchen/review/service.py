@@ -1,4 +1,4 @@
-from pitchkitchen.review.coach import ChefUnavailable, write_homework, write_pitch, write_turn
+from pitchkitchen.review.coach import ChefUnavailable, write_homework, write_pitch, write_starter_pack, write_turn
 from pitchkitchen.review.logic import GATE_WINDOW, can_serve, gate_ready, heat, next_step
 from pitchkitchen.review.store import (
     chef_for,
@@ -22,6 +22,7 @@ class GateNotReady(Exception):
 
 def run_round(
     connection, revision_ids, founder_text, settings, jev_transport=None, chef_transport=None, idea_id=None, tone="tough",
+    level="idea",
 ):
     """Scores the newest revision on a branch, then has Chef answer it.
 
@@ -61,20 +62,25 @@ def run_round(
     stored = chef_for(connection, [head]).get(head, {})
     try:
         if "turn" not in stored:
-            turn = write_turn(talk, verdict, verdict["focus"], heat(verdict), step, **chef)
+            turn = write_turn(talk, verdict, verdict["focus"], heat(verdict), step, level=level, **chef)
             save_chef(connection, head, "turn", turn["reaction"], turn["question"])
         if step == "homework" and "homework" not in stored:
-            save_chef_json(connection, head, "homework", write_homework(talk, verdict["focus"], **chef))
+            save_chef_json(connection, head, "homework", write_homework(talk, verdict["focus"], level=level, **chef))
     except ChefUnavailable:
         return {"verdict": verdict, "step": step, "paused": "chef"}
     return {"verdict": verdict, "step": step, "paused": None}
+
+
+def conversations(logs):
+    """Only real conversations count toward serving; facts found online don't."""
+    return [entry for entry in logs or [] if entry.get("kind", "conversation") == "conversation"]
 
 
 def serve(connection, revision_ids, founder_text, settings, chef_transport=None):
     head = revision_ids[-1]
     verdict = verdicts_for(connection, [head]).get(head)
     logs = founder_text.get("evidence") or []
-    if verdict is None or not can_serve(verdict["label"], len(logs)):
+    if verdict is None or not can_serve(verdict["label"], len(conversations(logs))):
         raise NotServable()
     served = write_pitch(
         conversation(connection, revision_ids, founder_text),
@@ -87,6 +93,25 @@ def serve(connection, revision_ids, founder_text, settings, chef_transport=None)
     save_chef(connection, head, "polished", served["pitch"])
     save_chef_json(connection, head, "next_steps", served["next_steps"])
     return served
+
+
+def write_pack(connection, revision_ids, founder_text, settings, verified, chef_transport=None):
+    """Has Chef plan the starter pack and stores it on the newest revision, with how many logs
+    it saw and whether the idea was served, so the page can tell when it is out of date."""
+    head = revision_ids[-1]
+    logs = founder_text.get("evidence") or []
+    plan = write_starter_pack(
+        conversation(connection, revision_ids, founder_text),
+        settings["chef_key"],
+        settings["chef_model"],
+        settings["chef_url"],
+        transport=chef_transport,
+        evidence=logs,
+        verified=verified,
+    )
+    stored = dict(plan, verified=verified, logs=len(logs))
+    save_chef_json(connection, head, "starter_pack", stored)
+    return stored
 
 
 def gate_status(connection, idea_id, evidence):
@@ -106,7 +131,7 @@ def gate_status(connection, idea_id, evidence):
     }
 
 
-def run_gate(connection, idea_id, head_id, founder_text, settings, jev_transport=None):
+def run_gate(connection, idea_id, head_id, founder_text, settings, jev_transport=None, starter=False):
     """Scores this session's tasting logs. Raises GateNotReady when there are too
     few logs or nothing new since the last attempt."""
     status = gate_status(connection, idea_id, founder_text.get("evidence") or [])
@@ -128,6 +153,7 @@ def run_gate(connection, idea_id, head_id, founder_text, settings, jev_transport
         settings["jev_key"],
         budget=settings.get("jev_budget"),
         transport=jev_transport,
+        starter=starter,
     )
 
 
@@ -168,4 +194,8 @@ def _latest_question(connection, revision_ids):
 
 
 def _log_state(entry):
-    return {key: entry[key] for key in ("who", "role", "spoken_on", "today_they", "paid", "quote")}
+    found = {key: entry[key] for key in ("who", "role", "spoken_on", "today_they", "paid", "quote")}
+    found["kind"] = entry.get("kind", "conversation")
+    if found["kind"] == "fact":
+        found["source"] = entry.get("source", "")
+    return found

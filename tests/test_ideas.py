@@ -304,6 +304,55 @@ def test_an_old_database_gets_the_new_columns_and_tokens():
 
     ensure_schema(db)
 
-    row = db.execute("SELECT status, station, tone, shared, token FROM ideas").fetchone()
-    assert (row["status"], row["station"], row["tone"], row["shared"]) == ("cooking", "grill", "tough", 0)
+    row = db.execute("SELECT status, station, tone, level, shared, token FROM ideas").fetchone()
+    assert (row["status"], row["station"], row["tone"], row["level"], row["shared"]) == ("cooking", "grill", "tough", "idea", 0)
     assert row["token"]
+
+
+def test_old_evidence_rows_become_conversations():
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute(
+        "CREATE TABLE evidence (id INTEGER PRIMARY KEY, idea_id INTEGER NOT NULL, session INTEGER NOT NULL, who TEXT NOT NULL,"
+        " role TEXT NOT NULL DEFAULT '', spoken_on TEXT NOT NULL, today_they TEXT NOT NULL DEFAULT '',"
+        " paid TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL, created_at TEXT NOT NULL)"
+    )
+    db.execute("INSERT INTO evidence (idea_id, session, who, spoken_on, quote, created_at) VALUES (1, 1, 'Bo', '2026-10-01', 'q', 'now')")
+
+    ensure_schema(db)
+
+    row = db.execute("SELECT kind, source FROM evidence").fetchone()
+    assert (row["kind"], row["source"]) == ("conversation", "")
+
+
+def test_an_idea_starts_at_a_level():
+    db = connection()
+    assert create_idea(db, "Ada", "We help X", "Story")["level"] == "idea"
+    assert create_idea(db, "Ada", "We help X", "Story", level="new")["level"] == "new"
+    with pytest.raises(IdeaTextError) as wrong:
+        create_idea(db, "Ada", "We help X", "Story", level="expert")
+    assert wrong.value.field == "level"
+
+
+def test_a_fact_needs_a_link_and_keeps_where_it_came_from():
+    fact = {"kind": "fact", "quote": "Lunch near campus costs 12 euros.", "source": "https://menu.example/campus", "spoken_on": "2026-10-01"}
+    found = clean_evidence(fact, TODAY)
+    assert (found["kind"], found["who"], found["source"]) == ("fact", "menu.example", "https://menu.example/campus")
+    assert clean_evidence(dict(fact, who="Menu guide"), TODAY)["who"] == "Menu guide"
+    for broken in (dict(fact, source=""), dict(fact, source="menu.example"), dict(fact, quote=" ")):
+        with pytest.raises(IdeaTextError):
+            clean_evidence(broken, TODAY)
+    with pytest.raises(IdeaTextError):
+        clean_evidence(dict(fact, kind="rumour"), TODAY)
+    assert clean_evidence(conversation_log(), TODAY)["kind"] == "conversation"
+
+
+def test_facts_and_conversations_are_counted_apart():
+    db = connection()
+    idea = create_idea(db, "Ada", "We help X", "Story")
+    add_evidence(db, idea["id"], 1, conversation_log(), today=TODAY)
+    add_evidence(db, idea["id"], 1, {"kind": "fact", "quote": "A fact.", "source": "https://a.example", "spoken_on": "2026-10-01"}, today=TODAY)
+
+    listed = list_ideas(db)[0]
+    assert (listed["evidence_count"], listed["fact_count"]) == (1, 1)
+    assert [entry["kind"] for entry in evidence_for(db, idea["id"])] == ["conversation", "fact"]

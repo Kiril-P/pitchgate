@@ -50,10 +50,13 @@ QUESTIONS = {
 
 ANSWERED = {
     "type": "noul",
-    "instructions": "Does the founder's latest answer directly answer latest_question with at least one specific fact?",
+    "instructions": (
+        "Does the founder's latest answer directly answer latest_question with at least one specific fact? "
+        "An honest none, zero, or never (for example 'nobody has paid yet') is a specific fact and counts as an answer."
+    ),
     "criteria": {
-        "true": "Answers the question with a specific fact",
-        "false": "Dodges, changes the subject, or answers with no specifics",
+        "true": "Answers the question with a specific fact, including an honest none, zero, or never",
+        "false": "Dodges, changes the subject, or answers with opinions, hopes, or plans",
     },
 }
 
@@ -62,7 +65,8 @@ TASTING_QUESTIONS = {
         "type": "score",
         "instructions": (
             "Across these logged customer conversations, how strong is the evidence that the problem is real: "
-            "past behaviour, named people, and specifics, rather than opinions or compliments?"
+            "past behaviour, named people, and specifics, rather than opinions or compliments? "
+            "A friend saying they would use it is an opinion, not evidence."
         ),
         "criteria": LEVELS,
     },

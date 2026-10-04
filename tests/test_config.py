@@ -9,7 +9,7 @@ def test_defaults_without_env_file(tmp_path):
     assert config["PORT"] == 5000
     assert config["DATABASE"] == Path("data") / "pitchkitchen.sqlite"
     assert config["TYPESAFE_API_KEY"] == ""
-    assert config["JEV_BUDGET_PER_IDEA"] == 10
+    assert config["JEV_BUDGET_PER_IDEA"] == 15
     assert config["ORGANIZER_KEY"] == ""
 
 
