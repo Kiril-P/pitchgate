@@ -11,7 +11,12 @@ LEVELS = ["None", "Weak", "Solid", "Strong"]
 QUESTIONS = {
     "market_need": {
         "type": "score",
-        "instructions": "How real is the market need in this startup idea?",
+        "instructions": (
+            "How real and painful is the problem this idea solves for the people it targets? "
+            "Judge the problem itself, from what is generally known and what the founder reports, including "
+            "what those people already do or pay about it today. Do not lower the score because the founder's "
+            "wording is vague, casual, or lacks proof; that is scored separately as evidence."
+        ),
         "criteria": LEVELS,
     },
     "feasibility": {

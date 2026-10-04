@@ -52,10 +52,18 @@ def test_unproven_and_weak_partials_turn_up_the_heat():
     assert heat(VERDICT) == "normal"
 
 
-def test_two_unproven_in_a_row_bin_the_idea():
+def test_the_first_session_never_bins_a_weak_idea():
     assert next_step(["UNPROVEN"]) == "open"
-    assert next_step(["UNPROVEN", "PARTIAL", "UNPROVEN"]) == "open"
-    assert next_step(["PARTIAL", "UNPROVEN", "UNPROVEN"]) == "binned"
+    assert next_step(["PARTIAL", "UNPROVEN", "UNPROVEN"]) == "open"
+    assert next_step(["UNPROVEN"] * 6) == "homework"
+
+
+def test_two_unproven_in_a_row_after_a_passed_gate_bin_the_idea():
+    session_one = ["PARTIAL"] * 6
+    assert next_step(session_one + ["UNPROVEN"], sessions=2) == "open"
+    assert next_step(session_one + ["UNPROVEN", "PARTIAL", "UNPROVEN"], sessions=2) == "open"
+    assert next_step(session_one + ["UNPROVEN", "UNPROVEN"], sessions=2) == "binned"
+    assert next_step(["PARTIAL"] * 5 + ["UNPROVEN", "UNPROVEN"], sessions=2) == "open"
 
 
 def test_five_answers_end_a_session_and_a_passed_gate_opens_five_more():
@@ -82,6 +90,8 @@ def test_write_turn_sends_bands_focus_tone_and_evidence():
     assert "feasibility (can this team" in system
     assert "feasibility Weak" in system
     assert "Never mention Jev" in system
+    assert "not proven yet" in system
+    assert "Never assume" in system
     assert "Marta (seller)" in system
     assert "no swearing" in system
     assert turn == {"reaction": "Raw.", "question": "Who paid you?"}

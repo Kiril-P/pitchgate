@@ -62,14 +62,14 @@ def test_jev_gets_the_question_chef_asked_before_the_answer(db):
     assert text.index("Chef: Who paid you? Raw.") < text.index("Founder: Ten students paid")
 
 
-def test_a_second_unproven_in_a_row_bins_the_idea(db):
+def test_two_unproven_in_the_first_session_keep_the_idea_open(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     first = play(db, idea, FakeJev(UNPROVEN), FakeChef())
     idea = add_answer(db, idea["id"], "Still nothing")
     second = play(db, idea, FakeJev(UNPROVEN), FakeChef())
 
     assert first["step"] == "open"
-    assert second["step"] == "binned"
+    assert second["step"] == "open"
 
 
 def test_missing_keys_pause_without_losing_anything(db):

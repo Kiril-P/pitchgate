@@ -103,10 +103,26 @@ def test_a_future_conversation_is_refused(tmp_path):
     assert b'value="Bo"' in response.data
 
 
-def test_two_unproven_bin_the_idea_and_offer_a_pivot(tmp_path):
+def test_a_weak_first_session_stays_open_instead_of_binning(tmp_path):
     client = make_client(tmp_path, FakeJev(UNPROVEN), FakeChef())
     location = pitch(client)
     client.post(location + "/answers", data={"answer": "Nothing"})
+    client.post(location + "/answers", data={"answer": "Still nothing"})
+
+    page = client.get(location).data.decode()
+    assert "Binned." not in page
+    assert "3 left this session" in page
+
+
+def test_two_unproven_after_a_passed_gate_bin_the_idea_and_offer_a_pivot(tmp_path):
+    client = make_client(tmp_path, FakeJev(*[PARTIAL] * 6, UNPROVEN), FakeChef())
+    location = pitch(client)
+    for number in range(5):
+        client.post(location + "/answers", data={"answer": "Answer %d" % number})
+    log(client, location, 3)
+    client.post(location + "/gate")
+    client.post(location + "/answers", data={"answer": "Nothing"})
+    client.post(location + "/answers", data={"answer": "Nothing again"})
 
     page = client.get(location).data.decode()
     assert "Binned." in page

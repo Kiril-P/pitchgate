@@ -21,14 +21,15 @@ OLD_LABELS = {"KILL": "UNPROVEN", "FIX": "PARTIAL", "SHIP": "PROVEN"}
 
 
 def decide(market_need, feasibility, differentiation, safety_risk, confidence, evidence=None, answered=None):
-    """answered is None for the pitch, where Chef has not asked anything yet."""
+    """answered is None for the pitch, where Chef has not asked anything yet.
+    A dodge is checked before the scores: a non-answer is asked again, it never counts toward the bin."""
     if safety_risk > SAFETY_VETO:
         return "UNPROVEN", "safety_veto"
+    if answered is not None and answered < ANSWERED_FLOOR:
+        return "PARTIAL", "dodged"
     scores = (market_need, feasibility, differentiation)
     if sum(scores) / len(scores) < UNPROVEN_AVERAGE:
         return "UNPROVEN", "all_weak"
-    if answered is not None and answered < ANSWERED_FLOOR:
-        return "PARTIAL", "dodged"
     if any(score < PROVEN_SCORE for score in scores):
         return "PARTIAL", "below_cutoff"
     if evidence is not None and evidence < EVIDENCE_FLOOR:
@@ -85,10 +86,14 @@ def heat(verdict):
 
 def next_step(labels, sessions=1):
     """labels: the verdict label of every revision on the branch, pitch first.
-    sessions: how many grill sessions are unlocked (passed tasting gates + 1)."""
-    if len(labels) >= 2 and labels[-1] == "UNPROVEN" and labels[-2] == "UNPROVEN":
+    sessions: how many grill sessions are unlocked (passed tasting gates + 1).
+    Only two UNPROVEN answers in a row inside a session after a passed gate bin the idea;
+    before the founder has talked to anyone, a weak session ends in homework."""
+    answers = len(labels) - 1
+    this_session = answers - SESSION_ANSWERS * (sessions - 1)
+    if sessions > 1 and this_session >= 2 and labels[-1] == "UNPROVEN" and labels[-2] == "UNPROVEN":
         return "binned"
-    if len(labels) - 1 >= SESSION_ANSWERS * sessions:
+    if answers >= SESSION_ANSWERS * sessions:
         return "homework"
     return "open"
 
