@@ -1,3 +1,16 @@
+{% set station_icons = {"prep": "receipt", "grill": "flame", "tasting": "spoon", "takeaway": "cloche"} %}
+{% set label_tips = {
+  "PROVEN": "Backed by things that already happened",
+  "PARTIAL": "Some proof, some claims",
+  "UNPROVEN": "Nothing proven yet",
+  "PENDING": "Jev hasn't scored this yet",
+  "UNSCORED": "Not sent to Jev",
+} %}
+
+{% macro icon(name, cls="") -%}
+<svg class="icon {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
 {% macro label_of(verdict) -%}
 {{ verdict.label if verdict else "UNSCORED" }}
 {%- endmacro %}
@@ -7,19 +20,19 @@
 {%- endmacro %}
 
 {% macro chip(verdict) -%}
-<span class="chip chip-{{ label_of(verdict)|lower }}">{{ label_of(verdict) }}</span>
+<span class="chip chip-{{ label_of(verdict)|lower }}" data-tip="{{ label_tips[label_of(verdict)] }}">{{ label_of(verdict) }}</span>
 {%- endmacro %}
 
 {% macro bar(name, value, maximum, cutoff, shown, cutoff_note, invert=False) -%}
 {% set percent = (value / maximum * 100) if value is not none else 0 %}
 {% set passed = (value <= cutoff) if invert else (value >= cutoff) %}
-<div class="bar {{ 'bar-pass' if passed else 'bar-miss' }}">
+<div class="bar {{ 'bar-pass' if passed else 'bar-miss' }}{% if invert %} bar-invert{% endif %}">
   <div class="bar-head">
     <span>{{ name }}</span>
     <span class="bar-value">{{ shown }}</span>
   </div>
-  <div class="bar-track" title="{{ cutoff_note }}">
-    <div class="bar-fill" style="width: {{ percent }}%"></div>
+  <div class="bar-track" data-tip="{{ cutoff_note }}">
+    <div class="bar-fill" style="--w: {{ percent }}%"></div>
     <div class="bar-cutoff" style="left: {{ cutoff / maximum * 100 }}%"></div>
   </div>
 </div>
@@ -35,6 +48,7 @@
     {% for station in stations %}
     <li class="station station-{{ station.state }}"{% if station.state == "current" %} aria-current="step"{% endif %}>
       <span class="station-number">{{ "%02d"|format(loop.index) }}</span>
+      <span class="station-icon" aria-hidden="true">{{ icon("check" if station.state == "done" else station_icons[station.key]) }}</span>
       <span class="station-name">{{ station.name }}</span>
       <span class="station-job">{{ station.job }}</span>
     </li>
@@ -47,17 +61,30 @@
 {{ timestamp[11:16] if timestamp else "" }}
 {%- endmacro %}
 
-{% macro card(idea) -%}
-<li class="ticket card">
-  <div class="ticket-meta">
-    <span>#{{ "%03d"|format(idea.id) }}{% if idea.status == "parked" %} · parked{% endif %}{% if idea.shared %} · shared{% endif %}</span>
-    <span>{{ day(idea.created_at) }}</span>
-  </div>
-  <a class="card-title" href="{{ url_for('idea_detail', token=idea.token) }}">{{ idea.one_liner }}</a>
-  <div class="card-foot">
-    <span>{{ idea.display_name }} · {{ idea.station_name }} · {{ idea.evidence_count }} log{% if idea.evidence_count != 1 %}s{% endif %}</span>
-    {{ stamp(idea.verdict) }}
-  </div>
+{% macro when(timestamp, style="stamp") -%}
+<time datetime="{{ timestamp }}" data-time="{{ style }}">{% if style == "clock" %}{{ clock(timestamp) }}{% elif style == "ago" %}{{ day(timestamp) }}{% else %}{{ day(timestamp) }} {{ clock(timestamp) }}{% endif %}</time>
+{%- endmacro %}
+
+{% macro counter(value, limit) -%}
+<span class="counter" aria-hidden="true">{{ (value or "")|length }} / {{ limit }}</span>
+{%- endmacro %}
+
+{% macro card(idea, n=0) -%}
+{% set keys = ["prep", "grill", "tasting", "takeaway"] %}
+<li class="slot">
+  <article class="ticket card card-{{ idea.status }}" data-tilt style="--n: {{ n }}; view-transition-name: idea-{{ idea.id }}">
+    <span class="clip" aria-hidden="true"></span>
+    <div class="ticket-meta">
+      <span>#{{ "%03d"|format(idea.id) }}{% if idea.status == "parked" %} · parked{% endif %}{% if idea.shared %} · shared{% endif %}</span>
+      {{ when(idea.created_at, "ago") }}
+    </div>
+    <a class="card-title" href="{{ url_for('idea_detail', token=idea.token) }}">{{ idea.one_liner }}</a>
+    <span class="card-progress" aria-hidden="true">{% for key in keys %}<i class="{{ 'on' if loop.index0 <= keys.index(idea.station) }}"></i>{% endfor %}</span>
+    <div class="card-foot">
+      <span>{{ idea.display_name }} · {{ idea.station_name }} · {{ idea.evidence_count }} talk{% if idea.evidence_count != 1 %}s{% endif %}{% if idea.fact_count %} · {{ idea.fact_count }} fact{% if idea.fact_count != 1 %}s{% endif %}{% endif %}</span>
+      {{ stamp(idea.verdict) }}
+    </div>
+  </article>
 </li>
 {%- endmacro %}
 

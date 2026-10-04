@@ -3,6 +3,12 @@
 {% else %}
 <p class="fine">Pick one to use it, then edit it if you like.</p>
 {% for suggestion in suggestions %}
-<button class="suggestion" type="button" data-fill="{{ suggestion }}">{{ suggestion }}</button>
+<button class="suggestion" type="button" data-fill="{{ suggestion.one_liner }}"{% if suggestion.story %} data-story="{{ suggestion.story }}"{% endif %} style="--i: {{ loop.index0 }}">
+  <span class="suggestion-number">{{ loop.index }}</span>
+  <span class="suggestion-text">
+    <span>{{ suggestion.one_liner }}</span>
+    {% if suggestion.first_fact %}<span class="suggestion-fact">First fact to check: {{ suggestion.first_fact }}</span>{% endif %}
+  </span>
+</button>
 {% endfor %}
 {% endif %}

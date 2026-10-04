@@ -3,10 +3,10 @@ from datetime import date
 
 from pitchkitchen import create_app
 
-from fakes import GATE_FAIL, PARTIAL, PROVEN, UNPROVEN, FakeChef, FakeJev
+from fakes import GATE_FAIL, PARTIAL, PROVEN, UNPROVEN, FakeChef, FakeJev, FakeSearch, grounded
 
 
-def make_client(tmp_path, jev, chef, budget=10):
+def make_client(tmp_path, jev, chef, budget=10, search=None):
     app = create_app(
         {
             "DATA_DIR": tmp_path,
@@ -17,6 +17,7 @@ def make_client(tmp_path, jev, chef, budget=10):
             "COACH_API_KEY": "chef",
             "JEV_TRANSPORT": jev,
             "CHEF_TRANSPORT": chef,
+            "SEARCH_TRANSPORT": search,
             "TODAY": date(2026, 10, 3),
         }
     )
@@ -69,7 +70,7 @@ def test_five_answers_end_the_session_with_homework(tmp_path):
 def test_logged_conversations_and_a_passed_gate_open_the_next_session(tmp_path):
     jev = FakeJev(PARTIAL)
     client = make_client(tmp_path, jev, FakeChef(), budget=20)
-    location = pitch(client)
+    location = pitch(client, level="tested")
     for number in range(5):
         client.post(location + "/answers", data={"answer": "Answer %d" % number})
 
@@ -90,6 +91,7 @@ def test_logged_conversations_and_a_passed_gate_open_the_next_session(tmp_path):
     page = client.get(location).data
     assert b"Passed" in page
     assert b"session 2" in page
+    assert b"Session 2 is open." in page
     assert b"tell Chef what the conversations taught you" in page
     assert client.post(location + "/answers", data={"answer": "Three of four pay today"}).status_code == 302
 
@@ -152,6 +154,9 @@ def test_proven_needs_three_logs_before_it_can_be_served(tmp_path):
     assert b"Served." in page
     assert b"We help students sell textbooks." in page
     assert b"Email the union" in page
+
+    client.post(location + "/pack")
+    assert "**Verified.**" in client.get(location + "/starter-pack.md").data.decode()
 
 
 def test_editing_an_answer_rescores_the_new_version(tmp_path):
@@ -224,6 +229,8 @@ def test_an_idea_stops_calling_jev_once_its_budget_is_spent(tmp_path):
     assert len(jev.calls) == 2
     page = client.get(location).data
     assert b"used its whole Jev budget" in page
+    assert b"won't be scored" in page
+    assert b'name="answer" maxlength="1000" rows="3" placeholder' not in page
     assert b"Jev 2 / 2" in page
     assert b"budget-spent" in page
 
@@ -241,3 +248,78 @@ def test_chef_failing_on_the_final_pitch_keeps_the_idea_open(tmp_path):
     response = client.post(location + "/serve")
     assert response.status_code == 503
     assert b"Chef stepped out before writing" in response.data
+
+
+def test_a_beginner_keeps_web_facts_and_opens_the_first_gate_with_them(tmp_path):
+    client = make_client(tmp_path, FakeJev(PARTIAL, tasting=GATE_FAIL), FakeChef(), budget=20, search=FakeSearch())
+    location = pitch(client, level="new")
+    for number in range(5):
+        client.post(location + "/answers", data={"answer": "Answer %d" % number})
+
+    found = client.post(location + "/facts/search").data.decode()
+    assert "A delivery app charges 3.99 euros" in found
+    assert found.count('name="keep"') == 2
+    assert client.post(location + "/facts", data={}).status_code == 400
+    kept = {
+        "keep": ["0", "1"],
+        "fact_0": "A delivery app charges 3.99 euros on orders under 15 euros in Madrid.",
+        "source_0": "https://delivery.example/faq",
+        "site_0": "delivery.example",
+        "fact_1": "Surplus-food apps list meals near Moncloa from 3.99 euros.",
+        "source_1": "https://surplus.example/madrid",
+        "site_1": "surplus.example",
+    }
+    assert client.post(location + "/facts", data=kept).headers["Location"].endswith("#tasting")
+    assert b"nothing new" in client.post(location + "/facts/search").data
+    log(client, location, 1)
+    page = client.get(location).data.decode()
+    assert "1 talk · 2 facts" in page
+    assert "Fact · 2026-10-03" in page
+
+    client.post(location + "/gate")
+    page = client.get(location).data.decode()
+    assert "A starter gate" in page
+    assert "Passed" in page
+
+
+def test_without_web_search_chef_suggests_what_to_look_up(tmp_path):
+    client = make_client(tmp_path, FakeJev(PARTIAL), FakeChef(), search=FakeSearch(grounded([])))
+    location = pitch(client)
+    found = client.post(location + "/facts/search").data.decode()
+    assert "here is what to look up yourself" in found
+    assert 'href="https://www.google.com/search?q=menu%20del%20dia%20precio%20Moncloa"' in found
+    assert 'data-open-details="add-fact"' in found
+
+    stuck = make_client(tmp_path, FakeJev(PARTIAL), FakeChef({"nope": 1}), search=FakeSearch(grounded([])))
+    assert b"or suggest searches right now" in stuck.post(location + "/facts/search").data
+
+
+def test_a_starter_pack_is_written_kept_fresh_and_downloaded(tmp_path):
+    client = make_client(tmp_path, FakeJev(PARTIAL), FakeChef())
+    location = pitch(client)
+    assert client.get(location + "/starter-pack.md").headers["Location"].endswith("#pack")
+    assert b"Write my starter pack" in client.get(location).data
+
+    assert client.post(location + "/pack").headers["Location"].endswith("#pack")
+    page = client.get(location).data.decode()
+    assert "Download starter-pack.md" in page
+    assert "List a book" in page
+    assert "Rewrite it to include that" not in page
+
+    download = client.get(location + "/starter-pack.md")
+    assert download.mimetype == "text/markdown"
+    assert "attachment" in download.headers["Content-Disposition"]
+    assert "**Draft.**" in download.data.decode()
+    assert "## CLAUDE.md" in download.data.decode()
+
+    client.post(location + "/answers", data={"answer": "Ten students paid"})
+    assert b"Rewrite it to include that" in client.get(location).data
+
+
+def test_chef_failing_on_the_starter_pack_keeps_the_page(tmp_path):
+    client = make_client(tmp_path, FakeJev(PARTIAL), FakeChef())
+    location = pitch(client)
+    broken = make_client(tmp_path, FakeJev(PARTIAL), FakeChef({"nope": 1}))
+    response = broken.post(location + "/pack")
+    assert response.status_code == 503
+    assert b"before writing your starter pack" in response.data

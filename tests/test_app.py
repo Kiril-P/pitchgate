@@ -128,3 +128,29 @@ def test_prep_suggests_one_liners(tmp_path):
 
 def test_prep_suggestions_are_hidden_without_a_chef_key(client):
     assert b"Suggest one-liners" not in client.get("/").data
+
+
+def test_a_founder_with_no_idea_can_spark_three(tmp_path):
+    client = build(tmp_path, COACH_API_KEY="chef", CHEF_TRANSPORT=FakeChef())
+    home = client.get("/").data.decode()
+    assert 'name="level" value="new"' in home
+    assert "Spark three ideas" in home
+
+    page = client.post("/prep/spark", data={"about": "I study BBA and spend too much on lunch"}).data.decode()
+    assert page.count('data-fill="') == 3
+    assert page.count('data-story="') == 3
+    assert "First fact to check: Menu prices near campus" in page
+    assert b"Tell Chef a little" in client.post("/prep/spark", data={"about": " "}).data
+    assert b"Chef is busy" in build(tmp_path, COACH_API_KEY="chef", CHEF_TRANSPORT=FakeChef({"sparks": []})).post(
+        "/prep/spark", data={"about": "x"}
+    ).data
+
+
+def test_the_level_is_kept_on_the_idea_and_on_a_pivot(client):
+    response = client.post(
+        "/ideas", data={"display_name": "Ada", "one_liner": "We help X", "story": "S", "consent": "on", "level": "new"}
+    )
+    token = response.headers["Location"].rsplit("/", 1)[-1]
+    assert 'value="new" checked' in client.get("/?pivot=" + token).data.decode()
+    bad = client.post("/ideas", data={"display_name": "Ada", "one_liner": "X", "story": "S", "consent": "on", "level": "guru"})
+    assert bad.status_code == 400
