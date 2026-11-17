@@ -18,7 +18,6 @@ STARTER_LEVELS = ("new", "idea")
 LABELS = ("UNPROVEN", "PARTIAL", "PROVEN", "PENDING")
 GATE_LABELS = ("PASSED", "SENT_BACK", "PENDING")
 DIMENSIONS = ("market_need", "feasibility", "differentiation")
-OLD_LABELS = {"KILL": "UNPROVEN", "FIX": "PARTIAL", "SHIP": "PROVEN"}
 
 
 def decide(market_need, feasibility, differentiation, safety_risk, confidence, evidence=None, answered=None):

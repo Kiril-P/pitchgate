@@ -11,7 +11,7 @@ CREATE TABLE verdicts (
     evidence FLOAT NULL,
     answered FLOAT NULL,
     label NVARCHAR(16) NOT NULL CHECK (label IN ('UNPROVEN', 'PARTIAL', 'PROVEN', 'PENDING')),
-    rule NVARCHAR(64) NOT NULL,
+    [rule] NVARCHAR(64) NOT NULL,
     created_at NVARCHAR(32) NOT NULL
 );
 
@@ -34,7 +34,7 @@ CREATE TABLE gates (
     willingness_to_pay FLOAT NULL,
     safety_risk FLOAT NULL,
     label NVARCHAR(16) NOT NULL CHECK (label IN ('PASSED', 'SENT_BACK', 'PENDING')),
-    rule NVARCHAR(64) NOT NULL,
+    [rule] NVARCHAR(64) NOT NULL,
     created_at NVARCHAR(32) NOT NULL
 );
 

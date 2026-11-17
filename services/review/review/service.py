@@ -1,6 +1,6 @@
-from pitchkitchen.review.coach import ChefUnavailable, write_homework, write_pitch, write_starter_pack, write_turn
-from pitchkitchen.review.logic import GATE_WINDOW, can_serve, gate_ready, heat, next_step
-from pitchkitchen.review.store import (
+from review.coach import ChefUnavailable, write_homework, write_pitch, write_starter_pack, write_turn
+from review.logic import GATE_WINDOW, can_serve, gate_ready, heat, next_step
+from review.store import (
     chef_for,
     gates_for,
     gates_passed,

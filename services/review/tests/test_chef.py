@@ -1,6 +1,6 @@
 import pytest
 
-from pitchkitchen.review.coach import (
+from review.coach import (
     ChefUnavailable,
     evidence_text,
     find_facts,
@@ -14,7 +14,7 @@ from pitchkitchen.review.coach import (
     write_starter_pack,
     write_turn,
 )
-from pitchkitchen.review.logic import answers_left, focus, heat, next_step, recommend
+from review.logic import answers_left, focus, heat, next_step, recommend
 
 from fakes import PACK, FakeChef, FakeSearch, grounded
 

@@ -1,9 +1,8 @@
 import json
 from datetime import datetime, timezone
 
-from pitchkitchen.review.jev import JevUnavailable, judge, judge_tasting
-from pitchkitchen.review.logic import (
-    OLD_LABELS,
+from review.jev import JevUnavailable, judge, judge_tasting
+from review.logic import (
     RETRY_CAP,
     band,
     decide,
@@ -17,77 +16,6 @@ from pitchkitchen.review.logic import (
 
 CHEF_KINDS = ("turn", "polished", "homework", "next_steps", "starter_pack")
 JSON_KINDS = ("homework", "next_steps", "starter_pack")
-
-CHEF_TABLE = """
-CREATE TABLE IF NOT EXISTS chef_messages (
-    id INTEGER PRIMARY KEY,
-    revision_id INTEGER NOT NULL REFERENCES revisions(id),
-    kind TEXT NOT NULL CHECK (kind IN ('turn', 'polished', 'homework', 'next_steps', 'starter_pack')),
-    body TEXT NOT NULL,
-    question TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    UNIQUE (revision_id, kind)
-);
-"""
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS verdicts (
-    id INTEGER PRIMARY KEY,
-    revision_id INTEGER NOT NULL UNIQUE REFERENCES revisions(id),
-    market_need REAL,
-    feasibility REAL,
-    differentiation REAL,
-    safety_risk REAL,
-    confidence REAL,
-    evidence REAL,
-    answered REAL,
-    label TEXT NOT NULL CHECK (label IN ('UNPROVEN', 'PARTIAL', 'PROVEN', 'PENDING', 'KILL', 'FIX', 'SHIP')),
-    rule TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS jev_calls (
-    id INTEGER PRIMARY KEY,
-    idea_id INTEGER NOT NULL,
-    revision_id INTEGER NOT NULL REFERENCES revisions(id),
-    purpose TEXT NOT NULL CHECK (purpose IN ('verdict', 'gate')),
-    ok INTEGER NOT NULL CHECK (ok IN (0, 1)),
-    created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gates (
-    id INTEGER PRIMARY KEY,
-    idea_id INTEGER NOT NULL,
-    session INTEGER NOT NULL,
-    last_evidence_id INTEGER NOT NULL,
-    evidence_strength REAL,
-    pain_frequency REAL,
-    willingness_to_pay REAL,
-    safety_risk REAL,
-    label TEXT NOT NULL CHECK (label IN ('PASSED', 'SENT_BACK', 'PENDING')),
-    rule TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-""" + CHEF_TABLE
-
-
-def ensure_schema(connection):
-    connection.executescript(SCHEMA)
-    columns = [row["name"] for row in connection.execute("PRAGMA table_info(verdicts)")]
-    for column in ("evidence", "answered"):
-        if column not in columns:
-            connection.execute("ALTER TABLE verdicts ADD COLUMN " + column + " REAL")
-    for old, new in OLD_LABELS.items():
-        connection.execute("UPDATE verdicts SET label = ? WHERE label = ?", (new, old))
-    chef_sql = connection.execute(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chef_messages'"
-    ).fetchone()["sql"]
-    if "starter_pack" not in chef_sql:
-        connection.execute("ALTER TABLE chef_messages RENAME TO chef_messages_old")
-        connection.executescript(CHEF_TABLE)
-        connection.execute("INSERT INTO chef_messages SELECT * FROM chef_messages_old")
-        connection.execute("DROP TABLE chef_messages_old")
-    connection.commit()
 
 
 def utc_now():
@@ -186,9 +114,9 @@ def record_gate(
     connection.execute(
         """
         INSERT INTO gates (idea_id, session, last_evidence_id, evidence_strength, pain_frequency,
-            willingness_to_pay, safety_risk, label, rule, created_at)
-        VALUES (:idea_id, :session, :last_evidence_id, :evidence_strength, :pain_frequency,
-            :willingness_to_pay, :safety_risk, :label, :rule, :created_at)
+            willingness_to_pay, safety_risk, label, [rule], created_at)
+        VALUES (%(idea_id)s, %(session)s, %(last_evidence_id)s, %(evidence_strength)s, %(pain_frequency)s,
+            %(willingness_to_pay)s, %(safety_risk)s, %(label)s, %(rule)s, %(created_at)s)
         """,
         row,
     )
@@ -197,7 +125,7 @@ def record_gate(
 
 
 def gates_for(connection, idea_id):
-    rows = connection.execute("SELECT * FROM gates WHERE idea_id = ? ORDER BY id", (idea_id,)).fetchall()
+    rows = connection.execute("SELECT * FROM gates WHERE idea_id = %s ORDER BY id", (idea_id,)).fetchall()
     gates = []
     for row in rows:
         gate = dict(row)
@@ -210,7 +138,7 @@ def gates_for(connection, idea_id):
 
 def gates_passed(connection, idea_id):
     row = connection.execute(
-        "SELECT COUNT(*) AS passed FROM gates WHERE idea_id = ? AND label = 'PASSED'",
+        "SELECT COUNT(*) AS passed FROM gates WHERE idea_id = %s AND label = 'PASSED'",
         (idea_id,),
     ).fetchone()
     return row["passed"]
@@ -218,7 +146,7 @@ def gates_passed(connection, idea_id):
 
 def get_verdict(connection, revision_id):
     row = connection.execute(
-        "SELECT * FROM verdicts WHERE revision_id = ?",
+        "SELECT * FROM verdicts WHERE revision_id = %s",
         (revision_id,),
     ).fetchone()
     if row is None:
@@ -229,7 +157,7 @@ def get_verdict(connection, revision_id):
 def verdicts_for(connection, revision_ids):
     if not revision_ids:
         return {}
-    marks = ",".join("?" for _ in revision_ids)
+    marks = ",".join("%s" for _ in revision_ids)
     rows = connection.execute(
         "SELECT * FROM verdicts WHERE revision_id IN (" + marks + ")",
         tuple(revision_ids),
@@ -238,10 +166,11 @@ def verdicts_for(connection, revision_ids):
 
 
 def save_chef(connection, revision_id, kind, body, question="", now=None):
+    connection.execute("DELETE FROM chef_messages WHERE revision_id = %s AND kind = %s", (revision_id, kind))
     connection.execute(
         """
-        INSERT OR REPLACE INTO chef_messages (revision_id, kind, body, question, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO chef_messages (revision_id, kind, body, question, created_at)
+        VALUES (%s, %s, %s, %s, %s)
         """,
         (revision_id, kind, body, question, now or utc_now()),
     )
@@ -257,7 +186,7 @@ def chef_for(connection, revision_ids):
     Bodies of the JSON_KINDS are stored as JSON and come back parsed."""
     if not revision_ids:
         return {}
-    marks = ",".join("?" for _ in revision_ids)
+    marks = ",".join("%s" for _ in revision_ids)
     rows = connection.execute(
         "SELECT * FROM chef_messages WHERE revision_id IN (" + marks + ")",
         tuple(revision_ids),
@@ -293,7 +222,7 @@ def latest_homework(connection, revision_ids):
 def jev_calls_used(connection, idea_id):
     """Successful Jev calls only: a failed call is not charged against the budget."""
     row = connection.execute(
-        "SELECT COUNT(*) AS used FROM jev_calls WHERE idea_id = ? AND ok = 1",
+        "SELECT COUNT(*) AS used FROM jev_calls WHERE idea_id = %s AND ok = 1",
         (idea_id,),
     ).fetchone()
     return row["used"]
@@ -301,7 +230,7 @@ def jev_calls_used(connection, idea_id):
 
 def _failures(connection, revision_id):
     row = connection.execute(
-        "SELECT COUNT(*) AS failed FROM jev_calls WHERE revision_id = ? AND purpose = 'verdict' AND ok = 0",
+        "SELECT COUNT(*) AS failed FROM jev_calls WHERE revision_id = %s AND purpose = 'verdict' AND ok = 0",
         (revision_id,),
     ).fetchone()
     return row["failed"]
@@ -311,17 +240,17 @@ def _log_call(connection, idea_id, revision_id, purpose, ok, created_at):
     connection.execute(
         """
         INSERT INTO jev_calls (idea_id, revision_id, purpose, ok, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
         """,
         (idea_id, revision_id, purpose, 1 if ok else 0, created_at),
     )
 
 
 def forget(connection, idea_id, revision_ids):
-    connection.execute("DELETE FROM gates WHERE idea_id = ?", (idea_id,))
-    connection.execute("DELETE FROM jev_calls WHERE idea_id = ?", (idea_id,))
+    connection.execute("DELETE FROM gates WHERE idea_id = %s", (idea_id,))
+    connection.execute("DELETE FROM jev_calls WHERE idea_id = %s", (idea_id,))
     if revision_ids:
-        marks = ",".join("?" for _ in revision_ids)
+        marks = ",".join("%s" for _ in revision_ids)
         connection.execute("DELETE FROM jev_calls WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
         connection.execute("DELETE FROM chef_messages WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
         connection.execute("DELETE FROM verdicts WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
@@ -345,15 +274,15 @@ def _pending(revision_id, rule, created_at):
 
 
 def _replace(connection, row):
-    connection.execute("DELETE FROM verdicts WHERE revision_id = ?", (row["revision_id"],))
+    connection.execute("DELETE FROM verdicts WHERE revision_id = %s", (row["revision_id"],))
     connection.execute(
         """
         INSERT INTO verdicts (
             revision_id, market_need, feasibility, differentiation,
-            safety_risk, confidence, evidence, answered, label, rule, created_at
+            safety_risk, confidence, evidence, answered, label, [rule], created_at
         ) VALUES (
-            :revision_id, :market_need, :feasibility, :differentiation,
-            :safety_risk, :confidence, :evidence, :answered, :label, :rule, :created_at
+            %(revision_id)s, %(market_need)s, %(feasibility)s, %(differentiation)s,
+            %(safety_risk)s, %(confidence)s, %(evidence)s, %(answered)s, %(label)s, %(rule)s, %(created_at)s
         )
         """,
         row,

@@ -1,23 +1,14 @@
-import sqlite3
+from itertools import count
 
 import pytest
 
-from pitchkitchen.ideas.store import create_idea, ensure_schema as ensure_ideas
-from pitchkitchen.review.jev import JevUnavailable, judge, parse_answers, parse_tasting
-from pitchkitchen.review.logic import band, can_serve, decide, decide_tasting, explain_verdict, gate_ready, over_budget, starter_gate
-from pitchkitchen.review.store import ensure_schema as ensure_review
-from pitchkitchen.review.store import forget, gates_for, gates_passed, jev_calls_used, record_gate, record_verdict
+from review.jev import JevUnavailable, judge, parse_answers, parse_tasting
+from review.logic import band, can_serve, decide, decide_tasting, explain_verdict, gate_ready, over_budget, starter_gate
+from review.store import forget, gates_for, gates_passed, jev_calls_used, record_gate, record_verdict
 
 from fakes import jev_scores, tasting_scores
 
-
-def connection():
-    db = sqlite3.connect(":memory:")
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys = ON")
-    ensure_ideas(db)
-    ensure_review(db)
-    return db
+REVISION_IDS = count(1)
 
 
 def test_safety_above_cutoff_is_unproven():
@@ -122,11 +113,11 @@ TEXT = {"one_liner": "We help X", "story": "Story", "answers": ["First"], "evide
 
 
 def pitch_id(db):
-    return create_idea(db, "Ada", "We help X", "Story", now="2026-09-29T10:00:00Z")["branch"][0]["id"]
+    """Revisions live in the ideas service; here any id the ideas service could have handed over will do."""
+    return next(REVISION_IDS)
 
 
-def test_missing_key_stores_pending_and_skips_jev():
-    db = connection()
+def test_missing_key_stores_pending_and_skips_jev(db):
     calls = []
 
     def transport(body, api_key):
@@ -140,8 +131,7 @@ def test_missing_key_stores_pending_and_skips_jev():
     assert verdict["rule"] == "missing_key"
 
 
-def test_record_verdict_stores_the_rule_and_bands():
-    db = connection()
+def test_record_verdict_stores_the_rule_and_bands(db):
 
     def transport(body, api_key):
         assert body["state"] == TEXT
@@ -156,8 +146,7 @@ def test_record_verdict_stores_the_rule_and_bands():
     assert verdict["evidence_band"] == "Strong"
 
 
-def test_a_failed_call_is_pending_and_a_retry_replaces_it():
-    db = connection()
+def test_a_failed_call_is_pending_and_a_retry_replaces_it(db):
     revision_id = pitch_id(db)
 
     first = record_verdict(db, revision_id, TEXT, "test-key", transport=lambda body, key: {"answers": {}})
@@ -167,8 +156,7 @@ def test_a_failed_call_is_pending_and_a_retry_replaces_it():
     assert second["label"] == "PROVEN"
 
 
-def test_a_final_verdict_is_not_replaced():
-    db = connection()
+def test_a_final_verdict_is_not_replaced(db):
     revision_id = pitch_id(db)
 
     first = record_verdict(db, revision_id, TEXT, "test-key", transport=lambda body, key: jev_scores(3, 3, 3, 0.0))
@@ -184,8 +172,7 @@ def test_over_budget_only_when_the_budget_is_used_up():
     assert not over_budget(500, None)
 
 
-def test_only_successful_calls_count_toward_the_budget():
-    db = connection()
+def test_only_successful_calls_count_toward_the_budget(db):
     revision_id = pitch_id(db)
 
     record_verdict(db, revision_id, TEXT, "test-key", transport=lambda b, k: {"answers": {}}, idea_id=1, budget=10)
@@ -197,8 +184,7 @@ def test_only_successful_calls_count_toward_the_budget():
     assert jev_calls_used(db, 2) == 0
 
 
-def test_three_failures_on_one_text_stop_retrying():
-    db = connection()
+def test_three_failures_on_one_text_stop_retrying(db):
     revision_id = pitch_id(db)
     calls = []
 
@@ -213,8 +199,7 @@ def test_three_failures_on_one_text_stop_retrying():
     assert verdict["rule"] == "retry_cap"
 
 
-def test_a_spent_budget_is_pending_and_skips_jev():
-    db = connection()
+def test_a_spent_budget_is_pending_and_skips_jev(db):
     first, second = pitch_id(db), pitch_id(db)
     calls = []
 
@@ -230,8 +215,7 @@ def test_a_spent_budget_is_pending_and_skips_jev():
     assert "JEV_BUDGET_PER_IDEA" in verdict["explanation"]
 
 
-def test_record_gate_scores_and_stores_each_attempt():
-    db = connection()
+def test_record_gate_scores_and_stores_each_attempt(db):
     revision_id = pitch_id(db)
 
     sent_back = record_gate(db, 1, revision_id, 1, 3, {}, "key", transport=lambda b, k: tasting_scores(1, 2, 2))
@@ -244,8 +228,7 @@ def test_record_gate_scores_and_stores_each_attempt():
     assert [g["purpose"] for g in db.execute("SELECT purpose FROM jev_calls")] == ["gate", "gate"]
 
 
-def test_a_gate_without_key_budget_or_answer_is_pending():
-    db = connection()
+def test_a_gate_without_key_budget_or_answer_is_pending(db):
     revision_id = pitch_id(db)
 
     assert record_gate(db, 1, revision_id, 1, 3, {}, "")["rule"] == "missing_key"
@@ -255,8 +238,7 @@ def test_a_gate_without_key_budget_or_answer_is_pending():
     assert gates_passed(db, 1) == 1
 
 
-def test_forget_removes_gates_calls_and_verdicts():
-    db = connection()
+def test_forget_removes_gates_calls_and_verdicts(db):
     revision_id = pitch_id(db)
     record_verdict(db, revision_id, TEXT, "key", transport=lambda b, k: jev_scores(3, 3, 3, 0), idea_id=1, budget=10)
     record_gate(db, 1, revision_id, 1, 3, {}, "key", transport=lambda b, k: tasting_scores(3, 3, 3))
@@ -265,32 +247,6 @@ def test_forget_removes_gates_calls_and_verdicts():
 
     assert jev_calls_used(db, 1) == 0
     assert gates_for(db, 1) == []
-
-
-def test_an_old_database_gets_new_labels_and_chef_kinds():
-    db = sqlite3.connect(":memory:")
-    db.row_factory = sqlite3.Row
-    ensure_ideas(db)
-    db.executescript(
-        """
-        CREATE TABLE verdicts (id INTEGER PRIMARY KEY, revision_id INTEGER NOT NULL UNIQUE, market_need REAL,
-            feasibility REAL, differentiation REAL, safety_risk REAL, confidence REAL, label TEXT NOT NULL,
-            rule TEXT NOT NULL, created_at TEXT NOT NULL);
-        CREATE TABLE chef_messages (id INTEGER PRIMARY KEY, revision_id INTEGER NOT NULL,
-            kind TEXT NOT NULL CHECK (kind IN ('turn', 'polished')), body TEXT NOT NULL,
-            question TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE (revision_id, kind));
-        INSERT INTO verdicts (revision_id, label, rule, created_at) VALUES (1, 'SHIP', 'all_clear', 'now');
-        INSERT INTO verdicts (revision_id, label, rule, created_at) VALUES (2, 'KILL', 'all_weak', 'now');
-        INSERT INTO chef_messages (revision_id, kind, body, created_at) VALUES (1, 'turn', 'Old roast', 'now');
-        """
-    )
-
-    ensure_review(db)
-
-    assert [r["label"] for r in db.execute("SELECT label FROM verdicts ORDER BY id")] == ["PROVEN", "UNPROVEN"]
-    db.execute("INSERT INTO chef_messages (revision_id, kind, body, created_at) VALUES (1, 'homework', '{}', 'now')")
-    db.execute("INSERT INTO chef_messages (revision_id, kind, body, created_at) VALUES (1, 'starter_pack', '{}', 'now')")
-    assert db.execute("SELECT COUNT(*) FROM chef_messages").fetchone()[0] == 3
 
 
 def test_a_beginners_first_gate_opens_unless_it_looks_unsafe():
