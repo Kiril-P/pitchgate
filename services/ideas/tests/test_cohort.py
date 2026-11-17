@@ -1,9 +1,6 @@
 from datetime import date
 
-from pitchkitchen import create_app
-from pitchkitchen.cohort.logic import idea_row, label_trend, latest_label, metrics, rows
-
-from fakes import PARTIAL, FakeChef, FakeJev
+from ideas.cohort import idea_row, label_trend, latest_label, metrics, rows
 
 TODAY = date(2026, 10, 20)
 
@@ -73,37 +70,3 @@ def test_metrics_summarise_the_cohort():
 def test_metrics_of_an_empty_cohort():
     assert metrics([], TODAY)["answers_per_idea"] == 0.0
     assert metrics([], TODAY)["returning_founders"] == 0.0
-
-
-def build(tmp_path, key):
-    return create_app(
-        {
-            "DATA_DIR": tmp_path,
-            "DATABASE": tmp_path / "pitchkitchen.sqlite",
-            "PORT": 5000,
-            "TYPESAFE_API_KEY": "jev",
-            "COACH_API_KEY": "chef",
-            "JEV_TRANSPORT": FakeJev(PARTIAL),
-            "CHEF_TRANSPORT": FakeChef(),
-            "ORGANIZER_KEY": key,
-        }
-    ).test_client()
-
-
-def test_the_organizer_page_is_off_without_a_key(tmp_path):
-    assert build(tmp_path, "").get("/organizer").status_code == 404
-
-
-def test_the_organizer_page_needs_the_right_key_and_sees_private_ideas(tmp_path):
-    client = build(tmp_path, "secret")
-    client.post("/ideas", data={"display_name": "Ada", "one_liner": "Private idea", "story": "S", "consent": "on"})
-
-    assert client.get("/organizer").status_code == 403
-    wrong = client.get("/organizer?key=nope")
-    assert wrong.status_code == 403
-    assert b"not right" in wrong.data
-
-    page = client.get("/organizer?key=secret").data.decode()
-    assert "Private idea" in page
-    assert "Talked to real people" in page
-    assert "PARTIAL" in page

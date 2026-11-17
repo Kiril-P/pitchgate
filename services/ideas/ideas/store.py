@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime, timezone
 
-from pitchkitchen.ideas.logic import (
+from ideas.logic import (
     AFTER_PITCH,
     CLOSED,
     DEFAULT_LEVEL,
@@ -20,89 +20,8 @@ from pitchkitchen.ideas.logic import (
     walk_branch,
 )
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS ideas (
-    id INTEGER PRIMARY KEY,
-    display_name TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'cooking'
-        CHECK (status IN ('cooking', 'parked', 'served', 'binned')),
-    station TEXT NOT NULL DEFAULT 'grill'
-        CHECK (station IN ('prep', 'grill', 'tasting', 'plating', 'recipe', 'mise', 'takeaway')),
-    token TEXT,
-    tone TEXT NOT NULL DEFAULT 'tough' CHECK (tone IN ('supportive', 'tough', 'ramsay')),
-    level TEXT NOT NULL DEFAULT 'idea' CHECK (level IN ('new', 'idea', 'tested')),
-    pivot_of INTEGER,
-    shared INTEGER NOT NULL DEFAULT 0 CHECK (shared IN (0, 1)),
-    consent_at TEXT,
-    created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS revisions (
-    id INTEGER PRIMARY KEY,
-    idea_id INTEGER NOT NULL REFERENCES ideas(id),
-    parent_id INTEGER REFERENCES revisions(id),
-    kind TEXT NOT NULL CHECK (kind IN ('pitch', 'answer')),
-    one_liner TEXT,
-    story TEXT,
-    answer TEXT,
-    created_at TEXT NOT NULL,
-    CHECK (
-        (kind = 'pitch' AND parent_id IS NULL AND one_liner IS NOT NULL
-            AND story IS NOT NULL AND answer IS NULL)
-        OR
-        (kind = 'answer' AND parent_id IS NOT NULL AND answer IS NOT NULL
-            AND one_liner IS NULL AND story IS NULL)
-    )
-);
-
-CREATE TABLE IF NOT EXISTS evidence (
-    id INTEGER PRIMARY KEY,
-    idea_id INTEGER NOT NULL REFERENCES ideas(id),
-    session INTEGER NOT NULL,
-    kind TEXT NOT NULL DEFAULT 'conversation' CHECK (kind IN ('conversation', 'fact')),
-    who TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT '',
-    spoken_on TEXT NOT NULL,
-    today_they TEXT NOT NULL DEFAULT '',
-    paid TEXT NOT NULL DEFAULT '',
-    quote TEXT NOT NULL,
-    source TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL
-);
-"""
-
-NEW_COLUMNS = {
-    "ideas": {
-        "status": "TEXT NOT NULL DEFAULT 'cooking'",
-        "station": "TEXT NOT NULL DEFAULT 'grill'",
-        "token": "TEXT",
-        "tone": "TEXT NOT NULL DEFAULT 'tough'",
-        "level": "TEXT NOT NULL DEFAULT 'idea'",
-        "pivot_of": "INTEGER",
-        "shared": "INTEGER NOT NULL DEFAULT 0",
-        "consent_at": "TEXT",
-    },
-    "evidence": {
-        "kind": "TEXT NOT NULL DEFAULT 'conversation'",
-        "source": "TEXT NOT NULL DEFAULT ''",
-    },
-}
-
 COLUMNS = "id, idea_id, parent_id, kind, one_liner, story, answer, created_at"
 IDEA_COLUMNS = "id, display_name, status, station, token, tone, level, pivot_of, shared, created_at"
-
-
-def ensure_schema(connection):
-    connection.executescript(SCHEMA)
-    for table, wanted in NEW_COLUMNS.items():
-        columns = [row["name"] for row in connection.execute("PRAGMA table_info(" + table + ")")]
-        for name, definition in wanted.items():
-            if name not in columns:
-                connection.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + definition)
-    for row in connection.execute("SELECT id FROM ideas WHERE token IS NULL").fetchall():
-        connection.execute("UPDATE ideas SET token = ? WHERE id = ?", (new_token(), row["id"]))
-    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS ideas_token ON ideas(token)")
-    connection.commit()
 
 
 def new_token():
@@ -133,15 +52,16 @@ def create_idea(
     cursor = connection.execute(
         """
         INSERT INTO ideas (display_name, station, token, tone, level, pivot_of, shared, consent_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        OUTPUT INSERTED.id
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (text["display_name"], AFTER_PITCH, new_token(), tone, level, pivot_of, 1 if shared else 0, created_at, created_at),
     )
-    idea_id = cursor.lastrowid
+    idea_id = cursor.fetchone()["id"]
     connection.execute(
         """
         INSERT INTO revisions (idea_id, parent_id, kind, one_liner, story, created_at)
-        VALUES (?, NULL, 'pitch', ?, ?, ?)
+        VALUES (%s, NULL, 'pitch', %s, %s, %s)
         """,
         (idea_id, text["one_liner"], text["story"], created_at),
     )
@@ -172,13 +92,13 @@ def _insert_answer(connection, idea_id, parent_id, answer, now):
     if status in CLOSED:
         raise IdeaClosed(status)
     connection.execute(
-        "UPDATE ideas SET status = 'cooking' WHERE id = ?",
+        "UPDATE ideas SET status = 'cooking' WHERE id = %s",
         (idea_id,),
     )
     connection.execute(
         """
         INSERT INTO revisions (idea_id, parent_id, kind, answer, created_at)
-        VALUES (?, ?, 'answer', ?, ?)
+        VALUES (%s, %s, 'answer', %s, %s)
         """,
         (idea_id, parent_id, text, now or utc_now()),
     )
@@ -194,7 +114,7 @@ def add_evidence(connection, idea_id, session, fields, now=None, today=None):
         raise IdeaClosed(status)
     entry = clean_evidence(fields, today)
     logged = connection.execute(
-        "SELECT COUNT(*) AS logged FROM evidence WHERE idea_id = ? AND session = ?",
+        "SELECT COUNT(*) AS logged FROM evidence WHERE idea_id = %s AND session = %s",
         (idea_id, session),
     ).fetchone()["logged"]
     if logged >= EVIDENCE_PER_SESSION:
@@ -202,7 +122,7 @@ def add_evidence(connection, idea_id, session, fields, now=None, today=None):
     connection.execute(
         """
         INSERT INTO evidence (idea_id, session, kind, who, role, spoken_on, today_they, paid, quote, source, created_at)
-        VALUES (:idea_id, :session, :kind, :who, :role, :spoken_on, :today_they, :paid, :quote, :source, :created_at)
+        VALUES (%(idea_id)s, %(session)s, %(kind)s, %(who)s, %(role)s, %(spoken_on)s, %(today_they)s, %(paid)s, %(quote)s, %(source)s, %(created_at)s)
         """,
         dict(entry, idea_id=idea_id, session=session, created_at=now or utc_now()),
     )
@@ -211,7 +131,7 @@ def add_evidence(connection, idea_id, session, fields, now=None, today=None):
 
 
 def evidence_for(connection, idea_id):
-    rows = connection.execute("SELECT * FROM evidence WHERE idea_id = ? ORDER BY id", (idea_id,)).fetchall()
+    rows = connection.execute("SELECT * FROM evidence WHERE idea_id = %s ORDER BY id", (idea_id,)).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -221,31 +141,31 @@ def set_status(connection, idea_id, status):
         raise IdeaNotFound()
     if current in CLOSED:
         raise IdeaClosed(current)
-    connection.execute("UPDATE ideas SET status = ? WHERE id = ?", (status, idea_id))
+    connection.execute("UPDATE ideas SET status = %s WHERE id = %s", (status, idea_id))
     connection.commit()
 
 
 def set_station(connection, idea_id, station):
-    connection.execute("UPDATE ideas SET station = ? WHERE id = ?", (station, idea_id))
+    connection.execute("UPDATE ideas SET station = %s WHERE id = %s", (station, idea_id))
     connection.commit()
 
 
 def set_shared(connection, idea_id, shared):
-    connection.execute("UPDATE ideas SET shared = ? WHERE id = ?", (1 if shared else 0, idea_id))
+    connection.execute("UPDATE ideas SET shared = %s WHERE id = %s", (1 if shared else 0, idea_id))
     connection.commit()
 
 
 def delete_idea(connection, idea_id):
-    connection.execute("DELETE FROM evidence WHERE idea_id = ?", (idea_id,))
-    connection.execute("DELETE FROM revisions WHERE idea_id = ?", (idea_id,))
-    connection.execute("UPDATE ideas SET pivot_of = NULL WHERE pivot_of = ?", (idea_id,))
-    connection.execute("DELETE FROM ideas WHERE id = ?", (idea_id,))
+    connection.execute("DELETE FROM evidence WHERE idea_id = %s", (idea_id,))
+    connection.execute("DELETE FROM revisions WHERE idea_id = %s", (idea_id,))
+    connection.execute("UPDATE ideas SET pivot_of = NULL WHERE pivot_of = %s", (idea_id,))
+    connection.execute("DELETE FROM ideas WHERE id = %s", (idea_id,))
     connection.commit()
 
 
 def get_idea(connection, idea_id):
     idea = connection.execute(
-        "SELECT " + IDEA_COLUMNS + " FROM ideas WHERE id = ?",
+        "SELECT " + IDEA_COLUMNS + " FROM ideas WHERE id = %s",
         (idea_id,),
     ).fetchone()
     if idea is None:
@@ -258,13 +178,13 @@ def get_idea(connection, idea_id):
 
 
 def get_idea_by_token(connection, token):
-    row = connection.execute("SELECT id FROM ideas WHERE token = ?", (token,)).fetchone()
+    row = connection.execute("SELECT id FROM ideas WHERE token = %s", (token,)).fetchone()
     return get_idea(connection, row["id"]) if row else None
 
 
 def get_branch(connection, revision_id):
     row = connection.execute(
-        "SELECT idea_id FROM revisions WHERE id = ?",
+        "SELECT idea_id FROM revisions WHERE id = %s",
         (revision_id,),
     ).fetchone()
     if row is None:
@@ -320,13 +240,13 @@ def _idea(row):
 
 
 def _status_of(connection, idea_id):
-    row = connection.execute("SELECT status FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    row = connection.execute("SELECT status FROM ideas WHERE id = %s", (idea_id,)).fetchone()
     return row["status"] if row else None
 
 
 def _revisions_for(connection, idea_id):
     rows = connection.execute(
-        "SELECT " + COLUMNS + " FROM revisions WHERE idea_id = ? ORDER BY id",
+        "SELECT " + COLUMNS + " FROM revisions WHERE idea_id = %s ORDER BY id",
         (idea_id,),
     ).fetchall()
     return [_revision(row) for row in rows]

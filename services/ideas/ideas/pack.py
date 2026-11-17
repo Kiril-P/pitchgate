@@ -1,8 +1,8 @@
 """The starter pack: one Markdown file a founder takes into Claude Code.
 
-Pure, like cohort: pitchkitchen/pages.py passes plain dicts in. The evidence section
+Pure, like cohort: the API passes plain dicts in. The evidence section
 is copied from the logs, never from Chef, so a pack can't cite a conversation or a
-fact that was not logged. Chef's plan (review/coach.py write_starter_pack) fills the rest.
+fact that was not logged. Chef's plan, written and stored by the review service, fills the rest.
 """
 
 

@@ -1,7 +1,7 @@
 """What a venture lab organizer needs to know about a cohort, from plain dicts.
 
-No tables and no imports from ideas or review: pitchkitchen/organizer.py builds
-one dict per idea from both stores and passes the list in.
+No tables and no store imports: the organizer endpoint builds one dict per idea from
+the ideas store plus the labels and gates the review service returns, and passes the list in.
 
 Each idea dict has: display_name, status, station, answer_count, evidence_count,
 gates_passed, labels (verdict label per revision on the branch, pitch first),

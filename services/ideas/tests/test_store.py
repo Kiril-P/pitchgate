@@ -1,9 +1,9 @@
-import sqlite3
 from datetime import date
 
+import pymssql
 import pytest
 
-from pitchkitchen.ideas.logic import (
+from ideas.logic import (
     STATION_KEYS,
     IdeaClosed,
     IdeaNotFound,
@@ -20,13 +20,12 @@ from pitchkitchen.ideas.logic import (
     station_name,
     walk_branch,
 )
-from pitchkitchen.ideas.store import (
+from ideas.store import (
     add_answer,
     add_evidence,
     create_idea,
     delete_idea,
     edit_answer,
-    ensure_schema,
     evidence_for,
     get_branch,
     get_idea,
@@ -37,14 +36,6 @@ from pitchkitchen.ideas.store import (
 )
 
 TODAY = date(2026, 10, 3)
-
-
-def connection():
-    db = sqlite3.connect(":memory:")
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys = ON")
-    ensure_schema(db)
-    return db
 
 
 def node(id, parent_id, kind="answer", answer="a"):
@@ -137,8 +128,7 @@ def test_founder_text_keeps_only_what_the_founder_wrote():
     }
 
 
-def test_create_idea_stores_the_pitch_tone_and_a_private_token():
-    db = connection()
+def test_create_idea_stores_the_pitch_tone_and_a_private_token(db):
     idea = create_idea(db, "Ada", "We help X", "Story", now="2026-09-29T10:00:00Z", tone="supportive", shared=True)
 
     assert idea["display_name"] == "Ada"
@@ -152,8 +142,7 @@ def test_create_idea_stores_the_pitch_tone_and_a_private_token():
     assert pitch["created_at"] == "2026-09-29T10:00:00Z"
 
 
-def test_create_idea_needs_consent_and_a_story():
-    db = connection()
+def test_create_idea_needs_consent_and_a_story(db):
     with pytest.raises(IdeaTextError) as no_consent:
         create_idea(db, "Ada", "We help X", "Story", consent=False)
     assert no_consent.value.field == "consent"
@@ -162,8 +151,7 @@ def test_create_idea_needs_consent_and_a_story():
     assert list_ideas(db) == []
 
 
-def test_answers_chain_onto_the_previous_revision():
-    db = connection()
+def test_answers_chain_onto_the_previous_revision(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     add_answer(db, idea["id"], "First")
     idea = add_answer(db, idea["id"], "Second")
@@ -173,8 +161,7 @@ def test_answers_chain_onto_the_previous_revision():
     assert branch[2]["parent_id"] == branch[1]["id"]
 
 
-def test_editing_an_answer_makes_a_sibling_and_keeps_the_old_one():
-    db = connection()
+def test_editing_an_answer_makes_a_sibling_and_keeps_the_old_one(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     first = add_answer(db, idea["id"], "First")["branch"][-1]
     add_answer(db, idea["id"], "Second")
@@ -186,15 +173,13 @@ def test_editing_an_answer_makes_a_sibling_and_keeps_the_old_one():
     assert len(idea["revisions"]) == 4
 
 
-def test_editing_needs_an_answer_of_this_idea():
-    db = connection()
+def test_editing_needs_an_answer_of_this_idea(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     with pytest.raises(IdeaNotFound):
         edit_answer(db, idea["id"], idea["branch"][0]["id"], "Not an answer")
 
 
-def test_closed_ideas_take_no_answers_or_logs():
-    db = connection()
+def test_closed_ideas_take_no_answers_or_logs(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     set_status(db, idea["id"], "binned")
     with pytest.raises(IdeaClosed):
@@ -205,8 +190,7 @@ def test_closed_ideas_take_no_answers_or_logs():
         set_status(db, idea["id"], "parked")
 
 
-def test_add_answer_to_missing_idea_raises():
-    db = connection()
+def test_add_answer_to_missing_idea_raises(db):
     with pytest.raises(IdeaNotFound):
         add_answer(db, 99, "Answer")
     with pytest.raises(IdeaNotFound):
@@ -215,8 +199,7 @@ def test_add_answer_to_missing_idea_raises():
         set_status(db, 99, "parked")
 
 
-def test_evidence_is_stored_per_session_with_a_cap():
-    db = connection()
+def test_evidence_is_stored_per_session_with_a_cap(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     for _ in range(10):
         add_evidence(db, idea["id"], 1, conversation_log(), today=TODAY)
@@ -230,18 +213,16 @@ def test_evidence_is_stored_per_session_with_a_cap():
     assert list_ideas(db)[0]["evidence_count"] == 11
 
 
-def test_schema_rejects_an_answer_without_a_parent():
-    db = connection()
+def test_schema_rejects_an_answer_without_a_parent(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(pymssql.IntegrityError):
         db.execute(
-            "INSERT INTO revisions (idea_id, kind, answer, created_at) VALUES (?, 'answer', 'x', 'now')",
+            "INSERT INTO revisions (idea_id, kind, answer, created_at) VALUES (%s, 'answer', 'x', 'now')",
             (idea["id"],),
         )
 
 
-def test_get_branch_stops_at_the_requested_revision():
-    db = connection()
+def test_get_branch_stops_at_the_requested_revision(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     first = add_answer(db, idea["id"], "First")["branch"][-1]
     add_answer(db, idea["id"], "Second")
@@ -250,8 +231,7 @@ def test_get_branch_stops_at_the_requested_revision():
     assert get_branch(db, 99) is None
 
 
-def test_list_ideas_shows_the_branch_and_activity():
-    db = connection()
+def test_list_ideas_shows_the_branch_and_activity(db):
     older = create_idea(db, "Ada", "Older", "Story", now="2026-10-01T09:00:00Z")
     add_answer(db, older["id"], "First", now="2026-10-02T09:00:00Z")
     create_idea(db, "Bo", "Newer", "Story")
@@ -264,8 +244,7 @@ def test_list_ideas_shows_the_branch_and_activity():
     assert listed[1]["activity"] == ["2026-10-01T09:00:00Z", "2026-10-02T09:00:00Z"]
 
 
-def test_sharing_and_deleting_a_pivot_source():
-    db = connection()
+def test_sharing_and_deleting_a_pivot_source(db):
     source = create_idea(db, "Ada", "Old idea", "Story")
     pivot = create_idea(db, "Ada", "New idea", "Story", pivot_of=source["id"])
     set_shared(db, pivot["id"], True)
@@ -288,45 +267,14 @@ def test_rail_marks_stations_before_after_and_at_the_current_one():
         rail("dessert")
 
 
-def test_a_new_idea_is_at_the_grill_once_its_pitch_is_saved():
-    db = connection()
+def test_a_new_idea_is_at_the_grill_once_its_pitch_is_saved(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     assert idea["station"] == "grill"
-    with pytest.raises(sqlite3.IntegrityError):
-        db.execute("UPDATE ideas SET station = 'dessert' WHERE id = ?", (idea["id"],))
+    with pytest.raises(pymssql.IntegrityError):
+        db.execute("UPDATE ideas SET station = 'dessert' WHERE id = %s", (idea["id"],))
 
 
-def test_an_old_database_gets_the_new_columns_and_tokens():
-    db = sqlite3.connect(":memory:")
-    db.row_factory = sqlite3.Row
-    db.execute("CREATE TABLE ideas (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL, created_at TEXT NOT NULL)")
-    db.execute("INSERT INTO ideas (display_name, created_at) VALUES ('Ada', 'now')")
-
-    ensure_schema(db)
-
-    row = db.execute("SELECT status, station, tone, level, shared, token FROM ideas").fetchone()
-    assert (row["status"], row["station"], row["tone"], row["level"], row["shared"]) == ("cooking", "grill", "tough", "idea", 0)
-    assert row["token"]
-
-
-def test_old_evidence_rows_become_conversations():
-    db = sqlite3.connect(":memory:")
-    db.row_factory = sqlite3.Row
-    db.execute(
-        "CREATE TABLE evidence (id INTEGER PRIMARY KEY, idea_id INTEGER NOT NULL, session INTEGER NOT NULL, who TEXT NOT NULL,"
-        " role TEXT NOT NULL DEFAULT '', spoken_on TEXT NOT NULL, today_they TEXT NOT NULL DEFAULT '',"
-        " paid TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL, created_at TEXT NOT NULL)"
-    )
-    db.execute("INSERT INTO evidence (idea_id, session, who, spoken_on, quote, created_at) VALUES (1, 1, 'Bo', '2026-10-01', 'q', 'now')")
-
-    ensure_schema(db)
-
-    row = db.execute("SELECT kind, source FROM evidence").fetchone()
-    assert (row["kind"], row["source"]) == ("conversation", "")
-
-
-def test_an_idea_starts_at_a_level():
-    db = connection()
+def test_an_idea_starts_at_a_level(db):
     assert create_idea(db, "Ada", "We help X", "Story")["level"] == "idea"
     assert create_idea(db, "Ada", "We help X", "Story", level="new")["level"] == "new"
     with pytest.raises(IdeaTextError) as wrong:
@@ -347,8 +295,7 @@ def test_a_fact_needs_a_link_and_keeps_where_it_came_from():
     assert clean_evidence(conversation_log(), TODAY)["kind"] == "conversation"
 
 
-def test_facts_and_conversations_are_counted_apart():
-    db = connection()
+def test_facts_and_conversations_are_counted_apart(db):
     idea = create_idea(db, "Ada", "We help X", "Story")
     add_evidence(db, idea["id"], 1, conversation_log(), today=TODAY)
     add_evidence(db, idea["id"], 1, {"kind": "fact", "quote": "A fact.", "source": "https://a.example", "spoken_on": "2026-10-01"}, today=TODAY)

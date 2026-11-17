@@ -1,4 +1,4 @@
-from pitchkitchen.pack import render_pack
+from ideas.pack import render_pack
 
 from fakes import PACK
 
