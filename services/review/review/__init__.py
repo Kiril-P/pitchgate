@@ -2,6 +2,7 @@ from flask import Flask
 
 from review.api import register_api
 from review.config import DEFAULT_JEV_BUDGET
+from review.cors import allow_origin
 from review.db import connect
 from review.migrations import migrate
 
@@ -28,4 +29,5 @@ def create_app(config):
         connection.close()
 
     register_api(app)
+    allow_origin(app, config.get("UI_ORIGIN", ""))
     return app

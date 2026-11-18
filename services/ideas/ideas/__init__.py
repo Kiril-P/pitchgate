@@ -1,6 +1,7 @@
 from flask import Flask
 
 from ideas.api import register_api
+from ideas.cors import allow_origin
 from ideas.db import connect
 from ideas.migrations import migrate
 from ideas.review_client import ReviewClient
@@ -28,4 +29,5 @@ def create_app(config):
         connection.close()
 
     register_api(app)
+    allow_origin(app, config.get("UI_ORIGIN", ""))
     return app

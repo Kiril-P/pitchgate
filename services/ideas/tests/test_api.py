@@ -237,6 +237,24 @@ def test_the_organizer_view_needs_its_key(database_url, db, review):
     assert found["metrics"]["ideas"] == 1
 
 
+UI = "http://localhost:8080"
+
+
+def test_only_the_ui_origin_may_call_from_a_browser(database_url, db, review):
+    client = build(database_url, review, UI_ORIGIN=UI)
+
+    allowed = client.get("/ideas", headers={"Origin": UI})
+    assert allowed.headers["Access-Control-Allow-Origin"] == UI
+    assert "Origin" in allowed.headers["Vary"]
+    preflight = client.options("/ideas/abc", headers={"Origin": UI, "Access-Control-Request-Method": "DELETE"})
+    assert "DELETE" in preflight.headers["Access-Control-Allow-Methods"]
+    assert "X-Organizer-Key" in preflight.headers["Access-Control-Allow-Headers"]
+    assert client.get("/ideas/nope", headers={"Origin": UI}).headers["Access-Control-Allow-Origin"] == UI
+
+    assert "Access-Control-Allow-Origin" not in client.get("/ideas", headers={"Origin": "https://evil.example"}).headers
+    assert "Access-Control-Allow-Origin" not in build(database_url, review).get("/ideas", headers={"Origin": UI}).headers
+
+
 def test_config_defaults():
     config = load_config({})
     assert (config["PORT"], config["REVIEW_URL"], config["REVIEW_TIMEOUT_S"], config["REVIEW_SLOW_TIMEOUT_S"]) == (
@@ -245,5 +263,7 @@ def test_config_defaults():
         5,
         90,
     )
+    assert config["UI_ORIGIN"] == ""
+    assert load_config({"UI_ORIGIN": UI + "/"})["UI_ORIGIN"] == UI
     with pytest.raises(RuntimeError):
         create_app(config)
