@@ -1,5 +1,5 @@
-// The small interactions on every page. Like chat.js, listeners sit on the document
-// because htmx swaps <body>; setUp runs again on every piece of content htmx loads.
+// The small interactions on every page. Listeners sit on the document because the pages
+// re-render their content from JSON; setUp runs again on every piece of content they render.
 
 var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 var finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
@@ -59,7 +59,9 @@ function setUp(root) {
   tick();
 }
 
-htmx.onLoad(setUp);
+document.addEventListener("DOMContentLoaded", function () {
+  setUp(document.body);
+});
 
 // Times are stored in UTC; show them in the reader's own time zone.
 function localTime(element) {
@@ -150,7 +152,7 @@ function autosize(area) {
 }
 
 function draftKey(field) {
-  return "pk-draft:" + location.pathname + ":" + field.name;
+  return "pk-draft:" + location.pathname + location.search + ":" + field.name;
 }
 
 function restoreDraft(field) {
@@ -229,18 +231,14 @@ document.addEventListener(
   true
 );
 
-// A draft is done once the server took it. Display name is kept for the next pitch.
-document.addEventListener("htmx:afterRequest", function (event) {
-  var form = event.detail.elt;
-  if (form.tagName !== "FORM" || !event.detail.xhr || event.detail.xhr.status >= 400) {
-    return;
-  }
+// A draft is done once the service took it. Display name is kept for the next pitch.
+function clearDrafts(form) {
   form.querySelectorAll("[data-draft]").forEach(function (field) {
     if (field.dataset.draft !== "keep") {
       store.set(draftKey(field), "");
     }
   });
-});
+}
 
 // The composer reminds the founder which question they are answering.
 function latestQuestion() {
@@ -600,7 +598,7 @@ document.addEventListener("click", function (event) {
   } else if ((found = target.closest("[data-open-dialog]"))) {
     openDialog(found.dataset.openDialog);
   } else if ((found = target.closest("[data-copy-link]"))) {
-    copy(location.origin + location.pathname, "Link copied. Anyone with it can open this idea.");
+    copy(location.href.split("#")[0], "Link copied. Anyone with it can open this idea.");
     markDone(found);
   } else if ((found = target.closest("[data-copy]"))) {
     copy(document.querySelector(found.dataset.copy).textContent.trim(), found.dataset.copyMessage || "Copied.");
@@ -718,40 +716,40 @@ document.addEventListener("keydown", function (event) {
   }
 });
 
-// hx-confirm opens the kitchen's own dialog instead of the browser's.
-document.addEventListener("htmx:confirm", function (event) {
+// The kitchen's own confirm dialog instead of the browser's. Resolves true on "yes".
+function confirmAction(question, yes) {
   var dialog = document.getElementById("confirm-dialog");
-  if (!event.detail.question || !dialog || !dialog.showModal) {
-    return;
+  if (!dialog || !dialog.showModal) {
+    return Promise.resolve(window.confirm(question));
   }
-  event.preventDefault();
-  dialog.querySelector("[data-confirm-text]").textContent = event.detail.question;
-  dialog.querySelector("[data-confirm-yes]").textContent = event.detail.elt.getAttribute("data-confirm-yes") || "Yes";
+  dialog.querySelector("[data-confirm-text]").textContent = question;
+  dialog.querySelector("[data-confirm-yes]").textContent = yes || "Yes";
   dialog.returnValue = "";
-  dialog.addEventListener(
-    "close",
-    function () {
-      if (dialog.returnValue === "ok") {
-        event.detail.issueRequest(true);
-      }
-    },
-    { once: true }
-  );
-  dialog.showModal();
-});
+  return new Promise(function (resolve) {
+    dialog.addEventListener(
+      "close",
+      function () {
+        resolve(dialog.returnValue === "ok");
+      },
+      { once: true }
+    );
+    dialog.showModal();
+  });
+}
 
 // A thin progress bar while any request is out.
 var root = document.documentElement;
+var requestsOut = 0;
 
-document.addEventListener("htmx:beforeRequest", function (event) {
-  if (!event.defaultPrevented) {
-    root.classList.remove("is-loaded");
-    root.classList.add("is-loading");
-  }
-});
+function startLoading() {
+  requestsOut += 1;
+  root.classList.remove("is-loaded");
+  root.classList.add("is-loading");
+}
 
 function finishLoading() {
-  if (!root.classList.contains("is-loading")) {
+  requestsOut = Math.max(0, requestsOut - 1);
+  if (requestsOut > 0 || !root.classList.contains("is-loading")) {
     return;
   }
   root.classList.remove("is-loading");
@@ -760,9 +758,3 @@ function finishLoading() {
     root.classList.remove("is-loaded");
   }, 600);
 }
-
-document.addEventListener("htmx:afterRequest", finishLoading);
-document.addEventListener("htmx:sendError", function () {
-  finishLoading();
-  toast("Couldn't reach the kitchen. Check your connection and try again.", "error");
-});

@@ -995,11 +995,11 @@ textarea[data-autosize] {
   gap: 0.45rem;
 }
 
-.suggestions:empty:not(.htmx-request) {
+.suggestions:empty:not(.is-working) {
   display: none;
 }
 
-.suggestions.htmx-request::before {
+.suggestions.is-working::before {
   content: "Chef is thinking…";
   color: transparent;
   background: linear-gradient(90deg, var(--ink-muted) 30%, var(--accent) 50%, var(--ink-muted) 70%) 0 0 / 300% 100%;
@@ -3278,7 +3278,7 @@ textarea[data-autosize] {
   font-size: 0.88rem;
 }
 
-.facts:empty:not(.htmx-request) {
+.facts:empty:not(.is-working) {
   display: none;
 }
 
@@ -3286,7 +3286,7 @@ textarea[data-autosize] {
   margin-top: 0.9rem;
 }
 
-.facts.htmx-request::before {
+.facts.is-working::before {
   content: "Chef is searching the web…";
   color: transparent;
   background: linear-gradient(90deg, var(--muted) 30%, var(--flame) 50%, var(--muted) 70%) 0 0 / 300% 100%;
@@ -4357,6 +4357,33 @@ textarea[data-autosize] {
   .funnel-row .bar-track {
     display: none;
   }
+}
+
+/* Page states: loading, a service waking up, a service down */
+
+.page-state {
+  display: grid;
+  justify-items: start;
+  gap: 0.8rem;
+  margin: 3rem auto;
+  max-width: 34rem;
+}
+
+.page-state p {
+  margin: 0;
+}
+
+.page-state .loading-text {
+  color: transparent;
+  background: linear-gradient(90deg, var(--muted) 30%, var(--flame) 50%, var(--muted) 70%) 0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  font-weight: 600;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.notice {
+  margin-bottom: 1.2rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
