@@ -8,3 +8,6 @@ data/
 *.sqlite
 .env
 PLAN.md
+.venv*/
+.env.*
+!.env.example
