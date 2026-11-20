@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#13110f" />
+    <title>Idea · Pitch Kitchen</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff6a2b' d='M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'/%3E%3C/svg%3E" />
+    <link rel="preload" href="assets/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="assets/style.css" />
+    <script src="config.js" defer></script>
+    <script src="assets/kitchen.js" defer></script>
+    <script src="assets/api.js" defer></script>
+    <script src="assets/shell.js" defer></script>
+    <script src="assets/idea.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="wordmark" href="index.html">
+          <span class="wordmark-flame"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span>
+          <span class="wordmark-text">Pitch Kitchen</span>
+        </a>
+        <div class="topbar-tools">
+          <span class="service"><span class="live-dot" aria-hidden="true"></span><span class="service-label">On service</span> <time data-clock>--:--</time></span>
+          <button class="icon-button bell" type="button" data-bell aria-label="Ring the service bell" data-tip="Ring the bell" data-tip-pos="below"><svg class="icon" aria-hidden="true"><use href="#i-bell"></use></svg></button>
+          <button class="icon-button" type="button" data-open-dialog="shortcuts" aria-label="Keyboard shortcuts" data-tip="Shortcuts" data-tip-pos="below" data-tip-align="end"><kbd>?</kbd></button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="idea">
+      <div data-state></div>
+
+      <div data-page hidden>
+        <div class="page-top">
+          <a class="back" href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg><span>Your ideas</span></a>
+          <div class="page-tools">
+            <button class="tool" type="button" data-copy-link data-tip="Anyone with the link can open it"><svg class="icon" aria-hidden="true"><use href="#i-link"></use></svg><span>Copy link</span></button>
+            <form data-action="share">
+              <button class="tool" type="submit" data-share><svg class="icon" aria-hidden="true"><use href="#i-users"></use></svg><span data-share-label>Share on cohort board</span></button>
+            </form>
+            <form data-action="delete">
+              <button class="tool tool-danger" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg><span>Delete idea</span></button>
+            </form>
+          </div>
+        </div>
+
+        <div data-review-down hidden>
+          <div class="session-over notice" role="status">
+            <span class="session-over-icon"><svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+            <p>Scores and Chef's questions can't be loaded right now. Your idea and logs are safe; try again in a minute.</p>
+            <button class="secondary" type="button" data-reload><svg class="icon" aria-hidden="true"><use href="#i-rotate"></use></svg><span>Load the scores again</span></button>
+          </div>
+        </div>
+
+        <nav class="stations" aria-label="Stations"><ol data-stations></ol></nav>
+
+        <section class="ticket order-head">
+          <div class="ticket-meta"><span data-meta></span><span data-created></span></div>
+          <h1 data-one-liner></h1>
+          <span data-stamp></span>
+          <p class="ticket-note">
+            <svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg>
+            Private link: only people you give this page's address to can open it<span data-shared-note hidden>, and it is listed on the cohort board</span>.
+            <span data-pivot hidden>Pivoted from <a data-pivot-link></a>.</span>
+          </p>
+        </section>
+
+        <section class="panel evidence" data-evidence>
+          <div class="section-head">
+            <h2><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>Evidence check</h2>
+            <p class="budget-wrap">
+              <span class="gauge" data-gauge aria-hidden="true"></span>
+              <span class="budget" data-budget data-tip="Successful Jev calls this idea has used, out of JEV_BUDGET_PER_IDEA" data-tip-align="end"></span>
+            </p>
+          </div>
+          <div data-scored>
+            <p class="muted" data-explanation></p>
+            <div class="bars" data-bars></div>
+            <p class="legend">
+              <span class="legend-mark" aria-hidden="true"></span>
+              The mark on each bar is Solid, the bar for PROVEN.
+              <span data-answered hidden>Answered Chef's question: <strong data-answered-value></strong>.</span>
+            </p>
+          </div>
+          <div class="unscored" data-unscored>
+            <span class="unscored-icon"><svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+            <div>
+              <p>Not scored yet.</p>
+              <p class="muted" data-unscored-why></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="grill">
+          <div class="section-head">
+            <h2><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg>Grill</h2>
+            <p><span class="pips" data-pips aria-hidden="true"></span> <span data-answer-count></span></p>
+          </div>
+          <ol class="thread" data-thread></ol>
+
+          <div class="ending ending-binned" data-binned hidden>
+            <span class="ending-icon"><svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg></span>
+            <h2>Binned.</h2>
+            <p>UNPROVEN twice in a row. Most good startups are a pivot of a first idea: keep what you learned and change the customer, problem, or approach.</p>
+            <a class="primary" data-pivot-this><svg class="icon" aria-hidden="true"><use href="#i-pivot"></use></svg><span>Pivot this idea</span></a>
+          </div>
+
+          <div class="ending ending-served" data-served hidden>
+            <button class="ending-icon" type="button" data-confetti aria-label="Celebrate"><svg class="icon" aria-hidden="true"><use href="#i-cloche"></use></svg></button>
+            <h2>Served.</h2>
+            <div class="polished-wrap" data-polished-wrap>
+              <p class="ticket polished" id="polished"></p>
+              <button class="tool" type="button" data-copy="#polished" data-copy-message="Pitch copied."><svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg><span>Copy pitch</span></button>
+            </div>
+            <div data-next-steps>
+              <h3>Next two weeks</h3>
+              <ol class="steps checklist" data-steps></ol>
+            </div>
+            <p class="muted">Written by Chef from your answers and logged conversations. Not scored.</p>
+          </div>
+
+          <div class="session-over" data-budget-spent hidden>
+            <span class="session-over-icon"><svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+            <p data-budget-spent-text></p>
+            <a class="secondary" href="#pack"><svg class="icon" aria-hidden="true"><use href="#i-arrow-down"></use></svg><span>Starter pack</span></a>
+          </div>
+
+          <form class="composer" data-action="answer" hidden>
+            <div class="composer-head">
+              <label for="answer-box">Your answer</label>
+              <button class="reply-to" type="button" data-reply-to hidden><svg class="icon" aria-hidden="true"><use href="#i-chef"></use></svg><span data-reply-text></span></button>
+            </div>
+            <textarea id="answer-box" name="answer" maxlength="1000" rows="3" required data-autosize data-draft data-hints data-main-input></textarea>
+            <p class="error" role="alert" data-error hidden></p>
+            <div class="composer-foot">
+              <span class="hints" data-tip="Hints from your wording. Jev does the scoring.">
+                <span class="hint" data-hint="who">Who</span>
+                <span class="hint" data-hint="when">When</span>
+                <span class="hint" data-hint="number">How many</span>
+              </span>
+              <span class="counter" aria-hidden="true">0 / 1000</span>
+              <span class="kbd-hint" aria-hidden="true"><kbd data-mod>⌘</kbd><kbd>↵</kbd></span>
+              <button class="primary" type="submit" data-busy="Chef is reading…"><span data-label>Send</span><svg class="icon" aria-hidden="true"><use href="#i-send"></use></svg></button>
+            </div>
+          </form>
+
+          <div class="session-over" data-homework-due hidden>
+            <span class="session-over-icon"><svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+            <p data-homework-due-text></p>
+            <a class="secondary" href="#tasting"><svg class="icon" aria-hidden="true"><use href="#i-arrow-down"></use></svg><span>Homework</span></a>
+          </div>
+
+          <div class="actions" data-actions hidden>
+            <form data-action="serve" hidden>
+              <p class="error" role="alert" data-error hidden></p>
+              <button class="primary primary-serve" type="submit" data-busy="Chef is writing…"><svg class="icon" aria-hidden="true"><use href="#i-cloche"></use></svg><span data-label>Serve it</span></button>
+            </form>
+            <span class="muted" data-proven-note hidden></span>
+            <span class="muted parked-note" data-parked hidden><svg class="icon" aria-hidden="true"><use href="#i-pause"></use></svg><span>Parked. Send an answer to pick it back up.</span></span>
+            <form data-action="park">
+              <button class="secondary" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-pause"></use></svg><span>Save and stop</span></button>
+            </form>
+          </div>
+        </section>
+
+        <section class="panel tasting" id="tasting" data-tasting>
+          <div class="section-head">
+            <h2><svg class="icon" aria-hidden="true"><use href="#i-spoon"></use></svg>Tasting: facts and conversations</h2>
+            <p data-tasting-counts></p>
+          </div>
+
+          <div data-tasting-open>
+            <div class="homework" data-homework hidden>
+              <h3><svg class="icon" aria-hidden="true"><use href="#i-chef"></use></svg>Homework from Chef</h3>
+              <div class="homework-grid">
+                <div>
+                  <p class="muted">Talk to:</p>
+                  <ul class="checklist" data-people></ul>
+                </div>
+                <div>
+                  <p class="muted">Ask about what they did, not what they would do:</p>
+                  <ul class="questions" data-questions></ul>
+                </div>
+              </div>
+            </div>
+            <p class="muted" data-starter-intro hidden>Start with facts: let Chef search the web, keep what's useful, then ask a few people you know. Any three facts or conversations open your first gate.</p>
+            <p class="muted" data-gate-intro hidden>Logged conversations are what make a verdict hard to fake. Log 3 or more to ask for the gate; passing it opens another grill session.</p>
+
+            <div class="scout">
+              <div class="scout-head">
+                <div>
+                  <h3><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>Find facts</h3>
+                  <p class="muted">Chef searches the web for competitors, prices, and complaints. Facts show there is a market; conversations prove the pain.</p>
+                </div>
+                <button class="secondary" type="button" data-search><svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg><span>Search the web</span></button>
+              </div>
+              <div id="facts" class="facts" aria-live="polite">
+                <p class="error" data-facts-error hidden></p>
+                <div class="look-ups" data-look-ups hidden>
+                  <p class="fine">Chef can't search the web on this key right now, so here is what to look up yourself. Each link opens a Google search.</p>
+                  <ol data-look-up-list></ol>
+                  <button class="secondary" type="button" data-open-details="add-fact"><svg class="icon" aria-hidden="true"><use href="#i-link"></use></svg><span>Found one? Add it with its link</span></button>
+                </div>
+                <form class="fact-picks" data-action="keep-facts" hidden>
+                  <p class="fine">Tick the facts worth keeping. Each one is saved with its link, so anyone can check it.</p>
+                  <div data-fact-list></div>
+                  <p class="error" role="alert" data-error hidden></p>
+                  <button class="secondary" type="submit" data-busy="Saving…"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg><span data-label>Keep the ticked facts</span></button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="gate" data-gate hidden>
+            <div class="gate-head">
+              <span class="gate-badge"><svg class="icon" aria-hidden="true"><use data-gate-icon href="#i-check"></use></svg></span>
+              <strong data-gate-title></strong>
+            </div>
+            <p data-gate-explanation></p>
+            <div class="bars" data-gate-bars></div>
+          </div>
+
+          <ol class="logs" data-logs></ol>
+
+          <div data-tasting-open>
+            <form class="log-form" data-action="evidence">
+              <h3><svg class="icon" aria-hidden="true"><use href="#i-message"></use></svg>Log a conversation</h3>
+              <p class="error" role="alert" data-error hidden></p>
+              <input type="hidden" name="kind" value="conversation" />
+              <div class="log-grid">
+                <label class="field"><span class="field-head"><span>Who you talked to</span><span class="counter" aria-hidden="true">0 / 80</span></span><input name="who" maxlength="80" placeholder="Marta, 2nd-year BBA" required data-draft /></label>
+                <label class="field"><span class="field-head"><span>Their role</span><span class="counter" aria-hidden="true">0 / 80</span></span><input name="role" maxlength="80" placeholder="Sells books every term" data-draft /></label>
+                <div class="field">
+                  <span class="field-head"><label for="spoken-on">Date</label><span class="date-chips"><button type="button" data-date="0" data-date-for="spoken-on">Today</button><button type="button" data-date="-1" data-date-for="spoken-on">Yesterday</button></span></span>
+                  <input id="spoken-on" name="spoken_on" type="date" required />
+                </div>
+                <label class="field"><span class="field-head"><span>What they pay today</span><span class="counter" aria-hidden="true">0 / 200</span></span><input name="paid" maxlength="200" placeholder="€85 per book at the campus store" data-draft /></label>
+              </div>
+              <label class="field"><span class="field-head"><span>What they do about it today</span><span class="counter" aria-hidden="true">0 / 500</span></span><input name="today_they" maxlength="500" placeholder="Posts in the WhatsApp group, waits weeks" data-draft /></label>
+              <label class="field"><span class="field-head"><span>What they said</span><span class="counter" aria-hidden="true">0 / 1000</span></span><textarea name="quote" maxlength="1000" rows="2" placeholder="Their words, about something that already happened." required data-autosize data-draft></textarea></label>
+              <button class="secondary" type="submit" data-busy="Logging…"><svg class="icon" aria-hidden="true"><use href="#i-message"></use></svg><span data-label>Log conversation</span></button>
+            </form>
+
+            <details class="add-fact" id="add-fact">
+              <summary><svg class="icon" aria-hidden="true"><use href="#i-link"></use></svg><span>Found something yourself? Add a fact with its link</span></summary>
+              <form class="log-form fact-form" data-action="evidence">
+                <p class="error" role="alert" data-error hidden></p>
+                <input type="hidden" name="kind" value="fact" />
+                <input type="hidden" name="spoken_on" />
+                <label class="field"><span class="field-head"><span>What you found</span><span class="counter" aria-hidden="true">0 / 1000</span></span><textarea name="quote" maxlength="1000" rows="2" placeholder="Students pay €3.99 delivery on orders under €15 at the main delivery app." required data-autosize></textarea></label>
+                <div class="log-grid">
+                  <label class="field"><span class="field-head"><span>Source link</span></span><input name="source" type="url" maxlength="2000" placeholder="https://..." required /></label>
+                  <label class="field"><span class="field-head"><span>Where (optional)</span><span class="counter" aria-hidden="true">0 / 80</span></span><input name="who" maxlength="80" placeholder="the site or report" /></label>
+                </div>
+                <button class="secondary" type="submit" data-busy="Saving…"><svg class="icon" aria-hidden="true"><use href="#i-link"></use></svg><span data-label>Add fact</span></button>
+              </form>
+            </details>
+
+            <div class="actions gate-actions">
+              <span class="plates" data-plates aria-hidden="true"></span>
+              <form data-action="gate" hidden>
+                <p class="error" role="alert" data-error hidden></p>
+                <button class="primary" type="submit" data-busy="Jev is tasting…"><svg class="icon" aria-hidden="true"><use href="#i-spoon"></use></svg><span data-label>Ask for the gate</span></button>
+              </form>
+              <span class="muted" data-gate-hint></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel pack" id="pack" data-pack>
+          <div class="section-head">
+            <h2><svg class="icon" aria-hidden="true"><use href="#i-receipt"></use></svg>Starter pack for Claude Code</h2>
+            <p><span class="pack-badge" data-pack-badge></span></p>
+          </div>
+          <p class="muted" data-pack-intro></p>
+          <p class="error" role="alert" data-pack-error hidden></p>
+          <div data-pack-written hidden>
+            <div class="pack-preview">
+              <div><h3>Version one</h3><ol data-mvp></ol></div>
+              <div><h3>First tasks</h3><ol data-tasks></ol></div>
+            </div>
+            <div class="pack-prompt">
+              <div class="pack-prompt-head">
+                <span>First prompt for Claude Code</span>
+                <button class="tool" type="button" data-copy="#claude-prompt" data-copy-message="Prompt copied. Paste it into Claude Code."><svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg><span>Copy</span></button>
+              </div>
+              <pre id="claude-prompt"></pre>
+            </div>
+            <p class="pack-stale" data-pack-stale hidden><svg class="icon" aria-hidden="true"><use href="#i-rotate"></use></svg><span>You have answered, logged, or been served since Chef wrote this. Rewrite it to include that.</span></p>
+          </div>
+          <div class="actions">
+            <button class="primary" type="button" data-download hidden><svg class="icon" aria-hidden="true"><use href="#i-arrow-down"></use></svg><span>Download starter-pack.md</span></button>
+            <form data-action="pack">
+              <button type="submit" data-busy="Chef is writing…" data-pack-button><svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg><span data-label></span></button>
+            </form>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <template id="t-station">
+      <li class="station"><span class="station-number"></span><span class="station-icon" aria-hidden="true"><svg class="icon"><use></use></svg></span><span class="station-name"></span><span class="station-job"></span></li>
+    </template>
+
+    <template id="t-bar">
+      <div class="bar">
+        <div class="bar-head"><span data-name></span><span class="bar-value" data-shown></span></div>
+        <div class="bar-track"><div class="bar-fill"></div><div class="bar-cutoff"></div></div>
+      </div>
+    </template>
+
+    <template id="t-founder">
+      <li class="message founder">
+        <span class="avatar avatar-founder" aria-hidden="true" data-initial></span>
+        <div class="message-body">
+          <div class="message-meta"><span><span data-name></span> · <time data-when></time><span data-edited hidden> · edited</span></span><span data-chip></span></div>
+          <div class="bubble"><p class="bubble-title" data-title hidden></p><p data-text></p></div>
+          <details class="edit" data-edit hidden>
+            <summary><svg class="icon" aria-hidden="true"><use href="#i-pencil"></use></svg><span>Edit</span></summary>
+            <form data-action="edit">
+              <textarea name="answer" maxlength="1000" rows="3" required data-autosize></textarea>
+              <p class="fine">Saves a new version and re-scores it. Answers after this one leave the conversation; the old version is kept in history.</p>
+              <p class="error" role="alert" data-error hidden></p>
+              <button class="secondary" type="submit" data-busy="Re-scoring…"><span data-label>Save new version</span></button>
+            </form>
+          </details>
+        </div>
+      </li>
+    </template>
+
+    <template id="t-chef">
+      <li class="message chef">
+        <span class="avatar avatar-chef" aria-hidden="true"><svg class="icon"><use href="#i-chef"></use></svg></span>
+        <div class="message-body">
+          <div class="message-meta"><span>Chef · <time data-when></time></span></div>
+          <div class="bubble"><p class="bubble-question" data-question hidden></p><p class="bubble-reaction" data-reaction></p></div>
+          <p class="message-note" data-note hidden><svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg><span data-note-text></span></p>
+        </div>
+      </li>
+    </template>
+
+    <template id="t-paused">
+      <li class="message chef message-paused">
+        <span class="avatar avatar-kitchen" aria-hidden="true"><svg class="icon"><use href="#i-bell"></use></svg></span>
+        <div class="message-body">
+          <div class="message-meta"><span>Kitchen</span></div>
+          <div class="bubble bubble-out">
+            <p data-why></p>
+            <p class="muted-ink" data-detail></p>
+            <form data-action="retry">
+              <p class="error" role="alert" data-error hidden></p>
+              <button class="secondary-ink" type="submit" data-busy="Trying again…"><svg class="icon" aria-hidden="true"><use href="#i-rotate"></use></svg><span data-label>Try again</span></button>
+            </form>
+          </div>
+        </div>
+      </li>
+    </template>
+
+    <template id="t-opener">
+      <li class="message chef message-opener">
+        <span class="avatar avatar-kitchen" aria-hidden="true"><svg class="icon"><use href="#i-bell"></use></svg></span>
+        <div class="message-body">
+          <div class="message-meta"><span data-meta></span></div>
+          <div class="bubble"><p class="bubble-question" data-question></p></div>
+        </div>
+      </li>
+    </template>
+
+    <template id="t-check">
+      <li><label><input type="checkbox" /><span></span></label></li>
+    </template>
+
+    <template id="t-question">
+      <li><button class="question" type="button" data-copy-self><svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg><span></span></button></li>
+    </template>
+
+    <template id="t-log">
+      <li class="log">
+        <div class="log-meta"><span data-day></span><span data-session></span></div>
+        <p class="log-who"><span class="avatar avatar-small" aria-hidden="true" data-initial></span><span><strong data-who></strong><span data-role></span></span></p>
+        <p class="log-quote" data-quote></p>
+        <p class="muted" data-today hidden></p>
+        <p class="muted" data-paid hidden></p>
+      </li>
+    </template>
+
+    <template id="t-fact-log">
+      <li class="log log-fact">
+        <div class="log-meta"><span data-day></span><span data-session></span></div>
+        <p class="log-quote" data-quote></p>
+        <p class="log-source"><a target="_blank" rel="noopener noreferrer" data-source><svg class="icon" aria-hidden="true"><use href="#i-link"></use></svg><span data-site></span></a></p>
+      </li>
+    </template>
+
+    <template id="t-fact-pick">
+      <label class="fact-pick">
+        <input type="checkbox" name="keep" checked />
+        <span class="fact-pick-text"><span data-fact></span><a target="_blank" rel="noopener noreferrer" data-source><svg class="icon" aria-hidden="true"><use href="#i-link"></use></svg><span data-site></span></a></span>
+      </label>
+    </template>
+
+    <template id="t-look-up">
+      <li><span data-find></span><a target="_blank" rel="noopener noreferrer" data-link><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><span data-query></span></a></li>
+    </template>
+
+    <footer class="footer">
+      <p><span class="footer-flame"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span> Pitch Kitchen. Jev scores, Chef asks, you bring the evidence.</p>
+      <p class="footer-keys">Press <kbd>?</kbd> for shortcuts</p>
+    </footer>
+  </body>
+</html>

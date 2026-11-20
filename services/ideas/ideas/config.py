@@ -11,4 +11,5 @@ def load_config(environ=None):
         "REVIEW_TIMEOUT_S": float(environ.get("REVIEW_TIMEOUT_S", "") or 5),
         "REVIEW_SLOW_TIMEOUT_S": float(environ.get("REVIEW_SLOW_TIMEOUT_S", "") or 90),
         "ORGANIZER_KEY": environ.get("ORGANIZER_KEY", ""),
+        "UI_ORIGIN": environ.get("UI_ORIGIN", "").rstrip("/"),
     }

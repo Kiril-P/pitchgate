@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#13110f" />
+    <title>Pitch Kitchen</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff6a2b' d='M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'/%3E%3C/svg%3E" />
+    <link rel="preload" href="assets/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="assets/style.css" />
+    <script src="config.js" defer></script>
+    <script src="assets/kitchen.js" defer></script>
+    <script src="assets/api.js" defer></script>
+    <script src="assets/shell.js" defer></script>
+    <script src="assets/home.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="wordmark" href="index.html">
+          <span class="wordmark-flame"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span>
+          <span class="wordmark-text">Pitch Kitchen</span>
+        </a>
+        <div class="topbar-tools">
+          <span class="service"><span class="live-dot" aria-hidden="true"></span><span class="service-label">On service</span> <time data-clock>--:--</time></span>
+          <button class="icon-button bell" type="button" data-bell aria-label="Ring the service bell" data-tip="Ring the bell" data-tip-pos="below"><svg class="icon" aria-hidden="true"><use href="#i-bell"></use></svg></button>
+          <button class="icon-button" type="button" data-open-dialog="shortcuts" aria-label="Keyboard shortcuts" data-tip="Shortcuts" data-tip-pos="below" data-tip-align="end"><kbd>?</kbd></button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="home">
+      <section class="intro">
+        <div class="intro-copy">
+          <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Venture lab kitchen · open tonight</p>
+          <h1 class="hero">
+            <span class="hero-line">Pitch it.</span>
+            <span class="hero-line hero-prove">Then prove it.<svg class="swash" viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true"><path d="M4 16 C 60 6, 120 4, 180 10 S 270 20, 296 8"/></svg></span>
+          </h1>
+          <svg class="badge" viewBox="0 0 120 120" aria-hidden="true">
+            <defs><path id="badge-circle" d="M60 60 m-44 0 a44 44 0 1 1 88 0 a44 44 0 1 1 -88 0"/></defs>
+            <text><textPath href="#badge-circle" textLength="274" lengthAdjust="spacing">NO HYPOTHETICALS · FACTS ONLY · </textPath></text>
+            <use class="badge-flame" href="#i-flame" x="44" y="44" width="32" height="32"/>
+          </svg>
+          <p class="lede">Start with an idea, or with none. Chef interviews you on what has already happened, not what you hope will. Between sessions you find facts and talk to real people. You leave with a starter pack you can build from in Claude Code, verified once the evidence backs it.</p>
+          <ol class="how">
+            <li style="--i: 0">
+              <button class="flip how-prep" type="button" data-flip aria-pressed="false">
+                <span class="flip-face flip-front"><span class="how-icon"><svg class="icon" aria-hidden="true"><use href="#i-receipt"></use></svg></span><span class="how-number">01</span><span><strong>Prep.</strong> Pitch in one line and tell the story, or start with no idea at all.</span></span>
+                <span class="flip-face flip-back"><span class="how-number">Chef's note</span><span>No idea yet? Tell Chef about your week and he sparks three problems worth testing.</span></span>
+              </button>
+            </li>
+            <li style="--i: 1">
+              <button class="flip how-grill" type="button" data-flip aria-pressed="false">
+                <span class="flip-face flip-front"><span class="how-icon"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span><span class="how-number">02</span><span><strong>Grill.</strong> Five questions per session, about facts, not plans.</span></span>
+                <span class="flip-face flip-back"><span class="how-number">Chef's note</span><span>Chef only takes the past: who, when, how many, how much.</span></span>
+              </button>
+            </li>
+            <li style="--i: 2">
+              <button class="flip how-tasting" type="button" data-flip aria-pressed="false">
+                <span class="flip-face flip-front"><span class="how-icon"><svg class="icon" aria-hidden="true"><use href="#i-spoon"></use></svg></span><span class="how-number">03</span><span><strong>Tasting.</strong> Find facts online and log real conversations to unlock the next session.</span></span>
+                <span class="flip-face flip-back"><span class="how-number">Chef's note</span><span>Beginners open their first gate with any three facts or conversations. After that, Jev tastes them.</span></span>
+              </button>
+            </li>
+            <li style="--i: 3">
+              <button class="flip how-served" type="button" data-flip aria-pressed="false">
+                <span class="flip-face flip-front"><span class="how-icon"><svg class="icon" aria-hidden="true"><use href="#i-cloche"></use></svg></span><span class="how-number">04</span><span><strong>Served.</strong> A pitch built from your evidence, plus a starter pack for Claude Code.</span></span>
+                <span class="flip-face flip-back"><span class="how-number">Chef's note</span><span>Draft packs any time. A verified pack needs a PROVEN verdict and 3 real conversations.</span></span>
+              </button>
+            </li>
+          </ol>
+        </div>
+
+        <div class="order-wrap">
+          <div class="printer" aria-hidden="true">
+            <span class="printer-led"></span>
+            <span>Kitchen printer · P-01</span>
+            <span class="printer-slot"></span>
+          </div>
+          <form class="ticket order" id="pitch-form" novalidate>
+            <div class="ticket-meta">
+              <span data-order-kind>New order</span>
+              <span>Prep · <time data-clock>--:--</time></span>
+            </div>
+            <p class="pivot-note" data-pivot-note hidden><svg class="icon" aria-hidden="true"><use href="#i-pivot"></use></svg><span></span></p>
+            <p class="error" role="alert" data-error hidden></p>
+            <fieldset class="levels">
+              <legend>Where are you starting?</legend>
+              <label class="level level-new">
+                <input type="radio" name="level" value="new" />
+                <span class="level-icon"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg></span>
+                <span class="level-name">No idea yet</span>
+                <span class="level-line">Chef helps you find a problem worth testing.</span>
+              </label>
+              <label class="level level-idea">
+                <input type="radio" name="level" value="idea" checked />
+                <span class="level-icon"><svg class="icon" aria-hidden="true"><use href="#i-receipt"></use></svg></span>
+                <span class="level-name">I have an idea</span>
+                <span class="level-line">Chef helps you find the facts behind it.</span>
+              </label>
+              <label class="level level-tested">
+                <input type="radio" name="level" value="tested" />
+                <span class="level-icon"><svg class="icon" aria-hidden="true"><use href="#i-users"></use></svg></span>
+                <span class="level-name">I've talked to customers</span>
+                <span class="level-line">Chef holds you to names, dates, and numbers.</span>
+              </label>
+            </fieldset>
+            <div class="spark">
+              <label class="field">
+                <span class="field-head"><span>Tell Chef about your week</span></span>
+                <textarea name="about" rows="3" maxlength="2000" placeholder="What you study, what annoys you every week, what you spend money or time on, who you know." data-autosize></textarea>
+              </label>
+              <button class="secondary-paper" type="button" data-spark><svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg><span>Spark three ideas</span></button>
+              <div id="sparks" class="suggestions" aria-live="polite"></div>
+            </div>
+            <label class="field">
+              <span class="field-head"><span>Display name</span><span class="counter" aria-hidden="true">0 / 80</span></span>
+              <input id="display-name" name="display_name" maxlength="80" autocomplete="nickname" required data-main-input data-draft="keep" />
+            </label>
+            <label class="field">
+              <span class="field-head"><span>The story</span><span class="counter" aria-hidden="true">0 / 2000</span></span>
+              <textarea name="story" maxlength="2000" rows="5" placeholder="Who has the problem, what you've seen happen, and why you." required data-autosize data-draft></textarea>
+            </label>
+            <div class="field">
+              <span class="field-head"><label for="one-liner">One-liner</label><span class="counter" aria-hidden="true">0 / 200</span></span>
+              <input id="one-liner" name="one_liner" maxlength="200" placeholder="We help [who] [do what] by [how]" required data-draft data-recipe-input />
+              <span class="recipe" aria-hidden="true">
+                <span class="recipe-label">Recipe</span>
+                <span class="recipe-chip" data-has="we help"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>We help [who]</span>
+                <span class="recipe-chip" data-has=" by "><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>by [how]</span>
+              </span>
+            </div>
+            <div class="suggest">
+              <button class="secondary-paper" type="button" data-suggest><svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg><span>Suggest one-liners from my story</span></button>
+              <div id="suggestions" class="suggestions" aria-live="polite"></div>
+            </div>
+            <fieldset class="tones">
+              <legend>Chef's tone</legend>
+              <label class="tone tone-supportive">
+                <input type="radio" name="tone" value="supportive" />
+                <span class="tone-heat" aria-hidden="true"><span class="hot"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span><span><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span><span><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span></span>
+                <span class="tone-name">Supportive mentor</span>
+                <span class="tone-line">“Good start. Who is the last person who told you this hurt?”</span>
+              </label>
+              <label class="tone tone-tough">
+                <input type="radio" name="tone" value="tough" checked />
+                <span class="tone-heat" aria-hidden="true"><span class="hot"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span><span class="hot"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span><span><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span></span>
+                <span class="tone-name">Tough but professional</span>
+                <span class="tone-line">“That is a hope, not a fact. Who paid?”</span>
+              </label>
+              <label class="tone tone-ramsay">
+                <input type="radio" name="tone" value="ramsay" />
+                <span class="tone-heat" aria-hidden="true"><span class="hot"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span><span class="hot"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span><span class="hot"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span></span>
+                <span class="tone-name">Full Ramsay (swearing)</span>
+                <span class="tone-line">“This pitch is RAW. Who the bloody hell paid you?”</span>
+              </label>
+            </fieldset>
+            <label class="switch">
+              <input type="checkbox" name="shared" role="switch" />
+              <span>Show it on the cohort board so other founders can read it</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" name="consent" required />
+              <span>I agree that my text is sent to Google Gemini and Typesafe (Jev) to be scored, and that the lab organizers can read it.</span>
+            </label>
+            <button class="primary primary-big" type="submit" data-busy="Chef is reading…"><span data-label>Send it to the kitchen</span><svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+            <p class="fine">Your idea gets a private link. Ideas you create in this browser are listed below; keep the link to open it elsewhere.</p>
+          </form>
+        </div>
+      </section>
+
+      <div id="boards"></div>
+    </main>
+
+    <footer class="footer">
+      <p><span class="footer-flame"><svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg></span> Pitch Kitchen. Jev scores, Chef asks, you bring the evidence.</p>
+      <p class="footer-keys">Press <kbd>?</kbd> for shortcuts</p>
+    </footer>
+  </body>
+</html>

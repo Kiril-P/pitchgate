@@ -151,9 +151,25 @@ def test_a_gate_jev_cannot_score_stays_pending(database_url, db):
     assert gate.get_json()["label"] == "SENT_BACK"
 
 
+UI = "http://localhost:8080"
+
+
+def test_only_the_ui_origin_may_call_from_a_browser(db, database_url):
+    client = build(database_url, UI_ORIGIN=UI)
+
+    preflight = client.options("/suggestions/one-liners", headers={"Origin": UI, "Access-Control-Request-Method": "POST"})
+    assert preflight.headers["Access-Control-Allow-Origin"] == UI
+    assert "Content-Type" in preflight.headers["Access-Control-Allow-Headers"]
+    refused = client.post("/suggestions/one-liners", json={"text": " "}, headers={"Origin": UI})
+    assert refused.status_code == 400
+    assert refused.headers["Access-Control-Allow-Origin"] == UI
+
+    assert "Access-Control-Allow-Origin" not in client.get("/ideas/1/sessions", headers={"Origin": "https://evil.example"}).headers
+
+
 def test_config_defaults_and_the_environment():
     config = load_config({})
-    assert (config["PORT"], config["JEV_BUDGET_PER_IDEA"], config["DATABASE_URL"]) == (8000, 15, "")
+    assert (config["PORT"], config["JEV_BUDGET_PER_IDEA"], config["DATABASE_URL"], config["UI_ORIGIN"]) == (8000, 15, "", "")
     assert load_config({"JEV_BUDGET_PER_IDEA": "3", "PORT": "9000"})["JEV_BUDGET_PER_IDEA"] == 3
     with pytest.raises(RuntimeError):
         create_app(load_config({}))

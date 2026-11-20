@@ -16,4 +16,5 @@ def load_config(environ=None):
         "COACH_API_KEY": environ.get("COACH_API_KEY", ""),
         "COACH_URL": environ.get("COACH_URL", "") or DEFAULT_URL,
         "COACH_MODEL": environ.get("COACH_MODEL", "") or DEFAULT_MODEL,
+        "UI_ORIGIN": environ.get("UI_ORIGIN", "").rstrip("/"),
     }
