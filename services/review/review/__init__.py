@@ -5,9 +5,11 @@ from review.config import DEFAULT_JEV_BUDGET
 from review.cors import allow_origin
 from review.db import connect
 from review.migrations import migrate
+from review.observe import configure_logging, register_observability
 
 
 def create_app(config):
+    configure_logging()
     app = Flask(__name__)
     if not config.get("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL is not set")
@@ -28,6 +30,7 @@ def create_app(config):
     finally:
         connection.close()
 
+    register_observability(app, config.get("VERSION") or "dev")
     register_api(app)
     allow_origin(app, config.get("UI_ORIGIN", ""))
     return app

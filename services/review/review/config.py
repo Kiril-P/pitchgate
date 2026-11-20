@@ -10,6 +10,7 @@ def load_config(environ=None):
     return {
         "DATABASE_URL": environ.get("DATABASE_URL", ""),
         "PORT": int(environ.get("PORT", "") or 8000),
+        "VERSION": environ.get("VERSION", "") or "dev",
         "DB_CONNECT_ATTEMPTS": int(environ.get("DB_CONNECT_ATTEMPTS", "") or 8),
         "TYPESAFE_API_KEY": environ.get("TYPESAFE_API_KEY", ""),
         "JEV_BUDGET_PER_IDEA": int(environ.get("JEV_BUDGET_PER_IDEA", "") or DEFAULT_JEV_BUDGET),
