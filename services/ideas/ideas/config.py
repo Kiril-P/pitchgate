@@ -6,6 +6,7 @@ def load_config(environ=None):
     return {
         "DATABASE_URL": environ.get("DATABASE_URL", ""),
         "PORT": int(environ.get("PORT", "") or 8000),
+        "VERSION": environ.get("VERSION", "") or "dev",
         "DB_CONNECT_ATTEMPTS": int(environ.get("DB_CONNECT_ATTEMPTS", "") or 8),
         "REVIEW_URL": environ.get("REVIEW_URL", "") or "http://review:8000",
         "REVIEW_TIMEOUT_S": float(environ.get("REVIEW_TIMEOUT_S", "") or 5),
