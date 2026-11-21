@@ -1,0 +1,76 @@
+# The whole system on one machine: `docker compose up --build`.
+# Secrets come from an untracked .env next to this file (copy .env.example).
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}
+    volumes:
+      - sql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    depends_on:
+      sql:
+        condition: service_healthy
+    environment:
+      SQLCMDPASSWORD: ${MSSQL_SA_PASSWORD}
+      IDEAS_DB_PASSWORD: ${IDEAS_DB_PASSWORD:?set IDEAS_DB_PASSWORD in .env}
+      REVIEW_DB_PASSWORD: ${REVIEW_DB_PASSWORD:?set REVIEW_DB_PASSWORD in .env}
+    volumes:
+      - ./db/init.sql:/db/init.sql:ro
+    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "sql", "-U", "sa", "-b", "-i", "/db/init.sql"]
+    restart: "no"
+
+  ideas:
+    build:
+      context: services/ideas
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: mssql://ideas_app:${IDEAS_DB_PASSWORD}@sql:1433/ideas
+      REVIEW_URL: http://review:8000
+      REVIEW_TIMEOUT_S: ${REVIEW_TIMEOUT_S:-5}
+      REVIEW_SLOW_TIMEOUT_S: ${REVIEW_SLOW_TIMEOUT_S:-30}
+      UI_ORIGIN: http://localhost:8080
+      ORGANIZER_KEY: ${ORGANIZER_KEY:-}
+    ports:
+      - "8001:8000"
+
+  review:
+    build:
+      context: services/review
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: mssql://review_app:${REVIEW_DB_PASSWORD}@sql:1433/review
+      UI_ORIGIN: http://localhost:8080
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      JEV_BUDGET_PER_IDEA: ${JEV_BUDGET_PER_IDEA:-15}
+      COACH_API_KEY: ${COACH_API_KEY:-}
+      COACH_MODEL: ${COACH_MODEL:-}
+      COACH_URL: ${COACH_URL:-}
+    ports:
+      - "8002:8000"
+
+  ui:
+    image: nginx:1.29-alpine
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+
+volumes:
+  sql-data:
