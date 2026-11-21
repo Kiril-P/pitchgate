@@ -4,10 +4,12 @@ from ideas.api import register_api
 from ideas.cors import allow_origin
 from ideas.db import connect
 from ideas.migrations import migrate
+from ideas.observe import configure_logging, register_observability
 from ideas.review_client import ReviewClient
 
 
 def create_app(config):
+    configure_logging()
     app = Flask(__name__)
     if not config.get("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL is not set")
@@ -28,6 +30,7 @@ def create_app(config):
     finally:
         connection.close()
 
+    register_observability(app, config.get("VERSION") or "dev")
     register_api(app)
     allow_origin(app, config.get("UI_ORIGIN", ""))
     return app
