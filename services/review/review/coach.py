@@ -1,12 +1,18 @@
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 
 log = logging.getLogger(__name__)
 
-TIMEOUT = 15
-SEARCH_TIMEOUT = 40
+# The ideas service waits at most 30 seconds for review (the schema's limit), and a round is one Jev
+# call plus one Chef step, so each Chef step gets a budget and only retries another model if that
+# attempt can still finish inside it. A fast "busy" failure gets a retry; a slow timeout does not.
+TIMEOUT = 10
+CHEF_BUDGET_S = 16
+SEARCH_TIMEOUT = 12
+SEARCH_BUDGET_S = 13
 DEFAULT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 SEARCH_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_MODEL = "gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite"
@@ -224,7 +230,8 @@ def find_facts(one_liner, story, api_key, model=DEFAULT_MODEL, transport=None):
         "Idea: " + one_liner + "\nStory: " + story
     )
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}], "tools": [{"google_search": {}}]}
-    models = [name.strip() for name in model.split(",") if name.strip()]
+    models = _models(model)
+    started = time.monotonic()
     for index, name in enumerate(models):
         try:
             if transport is None:
@@ -233,7 +240,7 @@ def find_facts(one_liner, story, api_key, model=DEFAULT_MODEL, transport=None):
                 payload = transport(dict(body, model=name), api_key)
             break
         except ChefUnavailable:
-            if index == len(models) - 1:
+            if index == len(models) - 1 or _out_of_time(started, SEARCH_TIMEOUT, SEARCH_BUDGET_S):
                 raise
     facts = parse_facts(payload)
     if not facts:
@@ -372,7 +379,8 @@ def _pairs(value, first, second):
 def _complete(instructions, conversation, api_key, model, url, transport):
     if not api_key:
         raise ChefUnavailable()
-    models = [name.strip() for name in model.split(",") if name.strip()]
+    models = _models(model)
+    started = time.monotonic()
     for index, name in enumerate(models):
         body = {
             "model": name,
@@ -389,7 +397,7 @@ def _complete(instructions, conversation, api_key, model, url, transport):
                 payload = transport(body, api_key)
             break
         except ChefUnavailable:
-            if index == len(models) - 1:
+            if index == len(models) - 1 or _out_of_time(started, TIMEOUT, CHEF_BUDGET_S):
                 raise
     try:
         reply = json.loads(payload["choices"][0]["message"]["content"])
@@ -398,6 +406,14 @@ def _complete(instructions, conversation, api_key, model, url, transport):
     if not isinstance(reply, dict):
         raise ChefUnavailable()
     return reply
+
+
+def _models(model):
+    return [name.strip() for name in model.split(",") if name.strip()]
+
+
+def _out_of_time(started, timeout, budget):
+    return time.monotonic() - started + timeout > budget
 
 
 def _post(url, body, api_key):

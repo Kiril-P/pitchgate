@@ -13,6 +13,7 @@ class StubReview:
     def __init__(self):
         self.calls = []
         self.down = False
+        self.slow = set()
         self.label = "PARTIAL"
         self.step = "open"
         self.sessions = 1
@@ -26,6 +27,8 @@ class StubReview:
         if self.down:
             raise urllib.error.URLError("connection refused")
         route = re.sub(r"/\d+", "/<id>", path.split("?")[0])
+        if route in self.slow:
+            raise TimeoutError("timed out")
         if (method, route) in self.replies:
             return self.replies[(method, route)]
         return 200, self.answer(method, route, body)

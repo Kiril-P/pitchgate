@@ -5,7 +5,7 @@ import urllib.request
 
 log = logging.getLogger(__name__)
 
-TIMEOUT = 15
+TIMEOUT = 12
 LEVELS = ["None", "Weak", "Solid", "Strong"]
 
 QUESTIONS = {
