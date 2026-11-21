@@ -51,7 +51,7 @@ def test_a_pitch_is_saved_then_scored_across_the_seam(client, review):
 def test_every_call_to_review_has_a_timeout_and_slow_calls_get_the_long_one(client, review):
     pitch(client)
     timeouts = {call["path"].split("/")[1]: call["timeout"] for call in review.calls}
-    assert timeouts == {"rounds": 90, "ideas": 5}
+    assert timeouts == {"rounds": 30, "ideas": 5}
 
 
 def test_bad_pitches_name_the_field(client):
@@ -99,6 +99,17 @@ def test_with_review_down_writes_that_need_it_save_nothing(client, review):
 def test_review_answering_garbage_counts_as_down(client, review):
     review.replies[("POST", "/ideas/<id>/state")] = (500, None)
     assert pitch(client).get_json()["review"] is None
+
+
+def test_a_round_that_runs_past_the_timeout_keeps_the_answer(client, review):
+    token = token_of(pitch(client))
+    review.slow = {"/rounds"}
+
+    response = client.post("/ideas/%s/answers" % token, json={"answer": "Ten students paid"})
+
+    assert response.status_code == 201
+    assert response.get_json()["branch"][-1]["answer"] == "Ten students paid"
+    assert response.get_json()["review"] is not None
 
 
 def test_answers_need_an_open_session_and_edits_stay_on_the_idea(client, review):
@@ -261,7 +272,7 @@ def test_config_defaults():
         8000,
         "http://review:8000",
         5,
-        90,
+        30,
     )
     assert config["UI_ORIGIN"] == ""
     assert load_config({"UI_ORIGIN": UI + "/"})["UI_ORIGIN"] == UI

@@ -1,5 +1,6 @@
 import pytest
 
+from review import coach
 from review.coach import (
     ChefUnavailable,
     evidence_text,
@@ -258,3 +259,52 @@ def test_without_search_chef_only_suggests_queries():
     assert "Do not state any facts, numbers, or links" in system_of(chef)
     with pytest.raises(ChefUnavailable):
         suggest_searches("We help X", "Story", "key", transport=FakeChef({"searches": [{"find": "no query"}]}))
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def busy_after(clock, seconds, tried, reply=None):
+    """A transport that takes `seconds` and then fails, like a model that is busy or times out."""
+
+    def transport(body, api_key):
+        tried.append(body["model"])
+        clock.now += seconds
+        if reply is not None and len(tried) == 3:
+            return reply
+        raise ChefUnavailable()
+
+    return transport
+
+
+def test_a_fast_busy_model_hands_over_to_the_next_one(monkeypatch):
+    clock, tried = Clock(), []
+    monkeypatch.setattr(coach.time, "monotonic", clock)
+    reply = FakeChef()({"messages": [{"content": 'Reply with JSON only: {"one_liners"'}]}, "key")
+
+    found = suggest_one_liners("Students overpay for books", "key", "a,b,c", transport=busy_after(clock, 1, tried, reply))
+
+    assert tried == ["a", "b", "c"]
+    assert len(found) == 3
+
+
+def test_chef_stops_when_another_model_could_not_finish_inside_the_budget(monkeypatch):
+    clock, tried = Clock(), []
+    monkeypatch.setattr(coach.time, "monotonic", clock)
+
+    with pytest.raises(ChefUnavailable):
+        suggest_one_liners("Students overpay for books", "key", "a,b,c", transport=busy_after(clock, coach.TIMEOUT, tried))
+
+    assert tried == ["a"]
+
+
+def test_a_round_and_a_fact_search_fit_inside_the_ideas_services_30_second_call():
+    from review import jev
+
+    assert jev.TIMEOUT + coach.CHEF_BUDGET_S < 30
+    assert coach.SEARCH_BUDGET_S + coach.CHEF_BUDGET_S < 30
