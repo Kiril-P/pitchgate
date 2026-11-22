@@ -272,7 +272,7 @@ def parse_facts(payload):
     try:
         meta = payload["candidates"][0].get("groundingMetadata") or {}
     except (KeyError, IndexError, TypeError, AttributeError):
-        raise ChefUnavailable()
+        raise ChefUnavailable() from None
     sources = [chunk.get("web") or {} for chunk in meta.get("groundingChunks") or []]
     facts = []
     for support in meta.get("groundingSupports") or []:
@@ -402,7 +402,7 @@ def _complete(instructions, conversation, api_key, model, url, transport):
     try:
         reply = json.loads(payload["choices"][0]["message"]["content"])
     except (KeyError, IndexError, TypeError, ValueError):
-        raise ChefUnavailable()
+        raise ChefUnavailable() from None
     if not isinstance(reply, dict):
         raise ChefUnavailable()
     return reply
@@ -432,7 +432,7 @@ def _send(url, body, headers, timeout):
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         log.warning("Chef request failed: HTTP %s %s", error.code, error.read()[:300])
-        raise ChefUnavailable()
+        raise ChefUnavailable() from None
     except (OSError, ValueError) as error:
         log.warning("Chef request failed: %r", error)
-        raise ChefUnavailable()
+        raise ChefUnavailable() from None

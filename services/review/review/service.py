@@ -177,7 +177,7 @@ def conversation(connection, revision_ids, founder_text):
             "text": "One-liner: " + founder_text["one_liner"] + "\n\nStory: " + founder_text["story"],
         }
     ]
-    for revision_id, answer in zip(revision_ids, founder_text["answers"]):
+    for revision_id, answer in zip(revision_ids, founder_text["answers"], strict=False):
         turn = chef.get(revision_id, {}).get("turn")
         if turn:
             messages.append({"role": "chef", "text": (turn["question"] + " " + turn["body"]).strip()})
