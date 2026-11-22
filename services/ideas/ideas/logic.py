@@ -127,7 +127,7 @@ def clean_evidence(fields, today=None):
     try:
         spoken_on = date.fromisoformat(raw_date)
     except ValueError:
-        raise IdeaTextError("spoken_on", "Date must be a real date (YYYY-MM-DD).")
+        raise IdeaTextError("spoken_on", "Date must be a real date (YYYY-MM-DD).") from None
     if spoken_on > today:
         raise IdeaTextError("spoken_on", "Log conversations that already happened, not planned ones.")
     if kind == "fact":

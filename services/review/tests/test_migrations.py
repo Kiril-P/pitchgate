@@ -1,3 +1,4 @@
+import pymssql
 import pytest
 
 from review.db import connect, parse_url
@@ -26,7 +27,7 @@ def test_a_failing_migration_is_rolled_back_and_not_recorded(fresh, tmp_path):
     (tmp_path / "001_ok.sql").write_text("CREATE TABLE notes (id INT PRIMARY KEY)")
     (tmp_path / "002_broken.sql").write_text("CREATE TABLE half (id INT PRIMARY KEY)\nGO\nSELECT * FROM missing_table")
 
-    with pytest.raises(Exception):
+    with pytest.raises(pymssql.Error):
         migrate(fresh, tmp_path)
 
     recorded = [row["version"] for row in fresh.execute("SELECT version FROM schema_migrations")]
@@ -57,7 +58,6 @@ def test_database_urls_name_the_server_login_and_database():
 
 
 def test_connect_retries_while_the_database_resumes(monkeypatch):
-    import pymssql
 
     attempts, waits = [], []
 

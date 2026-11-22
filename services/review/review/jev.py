@@ -128,7 +128,7 @@ def parse_answers(payload, with_answered=False):
             "answered": float(answers["answered"]["noul"]) if with_answered else None,
         }
     except (KeyError, TypeError, ValueError):
-        raise JevUnavailable()
+        raise JevUnavailable() from None
     return measured
 
 
@@ -142,7 +142,7 @@ def parse_tasting(payload):
             "safety_risk": float(answers["safety_risk"]["noul"]),
         }
     except (KeyError, TypeError, ValueError):
-        raise JevUnavailable()
+        raise JevUnavailable() from None
 
 
 def _solid_or_better(answer):
@@ -166,7 +166,7 @@ def _post(body, api_key):
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         log.warning("Jev request failed: HTTP %s %s", error.code, error.read()[:300])
-        raise JevUnavailable()
+        raise JevUnavailable() from None
     except (OSError, ValueError) as error:
         log.warning("Jev request failed: %r", error)
-        raise JevUnavailable()
+        raise JevUnavailable() from None

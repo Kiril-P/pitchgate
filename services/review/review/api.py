@@ -141,7 +141,7 @@ def register_api(app):
         try:
             revision_ids = [int(part) for part in raw.split(",") if part]
         except ValueError:
-            raise BadRequest("revisions must be comma-separated integers.")
+            raise BadRequest("revisions must be comma-separated integers.") from None
         forget(get_db(), idea_id, revision_ids)
         return "", 204
 
