@@ -1,0 +1,143 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/kiril-p
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    name: push image (${{ matrix.service }})
+    needs: ci
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [ideas, review]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: VERSION=${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/pitchgate-${{ matrix.service }}:${{ github.sha }}
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RG: ${{ vars.RESOURCE_GROUP }}
+      PREFIX: ${{ vars.PREFIX }}
+      UI_STORAGE: ${{ vars.UI_STORAGE }}
+      SQL_HOST: ${{ vars.PREFIX }}-sql.database.windows.net
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Sign in to Azure as the pipeline's managed identity (OIDC, no password)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Look up the public addresses
+        run: |
+          review_fqdn=$(az containerapp show -n "$PREFIX-review" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          ideas_fqdn=$(az containerapp show -n "$PREFIX-ideas" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          ui_origin=$(az storage account show -n "$UI_STORAGE" -g "$RG" --query primaryEndpoints.web -o tsv)
+          echo "REVIEW_URL=https://$review_fqdn" >> "$GITHUB_ENV"
+          echo "IDEAS_URL=https://$ideas_fqdn" >> "$GITHUB_ENV"
+          echo "UI_ORIGIN=${ui_origin%/}" >> "$GITHUB_ENV"
+
+      - name: Deploy review
+        env:
+          DB_PASSWORD: ${{ secrets.REVIEW_DB_PASSWORD }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          COACH_API_KEY: ${{ secrets.COACH_API_KEY }}
+        run: |
+          az containerapp secret set -n "$PREFIX-review" -g "$RG" --output none --secrets \
+            "database-url=mssql://review_app:${DB_PASSWORD}@${SQL_HOST}:1433/${PREFIX}-review-db?encrypt=require" \
+            "typesafe-api-key=${TYPESAFE_API_KEY}" \
+            "coach-api-key=${COACH_API_KEY}"
+          az containerapp update -n "$PREFIX-review" -g "$RG" --output none \
+            --image "$REGISTRY/pitchgate-review:$GITHUB_SHA" \
+            --set-env-vars DATABASE_URL=secretref:database-url TYPESAFE_API_KEY=secretref:typesafe-api-key \
+              COACH_API_KEY=secretref:coach-api-key UI_ORIGIN="$UI_ORIGIN"
+
+      - name: Deploy ideas
+        env:
+          DB_PASSWORD: ${{ secrets.IDEAS_DB_PASSWORD }}
+          ORGANIZER_KEY: ${{ secrets.ORGANIZER_KEY }}
+        run: |
+          az containerapp secret set -n "$PREFIX-ideas" -g "$RG" --output none --secrets \
+            "database-url=mssql://ideas_app:${DB_PASSWORD}@${SQL_HOST}:1433/${PREFIX}-ideas-db?encrypt=require" \
+            "organizer-key=${ORGANIZER_KEY}"
+          az containerapp update -n "$PREFIX-ideas" -g "$RG" --output none \
+            --image "$REGISTRY/pitchgate-ideas:$GITHUB_SHA" \
+            --set-env-vars DATABASE_URL=secretref:database-url ORGANIZER_KEY=secretref:organizer-key \
+              REVIEW_URL="$REVIEW_URL" UI_ORIGIN="$UI_ORIGIN"
+
+      - name: Wait until both services report this commit on /health
+        run: |
+          # A cold start plus a paused database resuming can take over a minute, so allow five.
+          for url in "$REVIEW_URL" "$IDEAS_URL"; do
+            for attempt in $(seq 1 30); do
+              body=$(curl -s --max-time 40 "$url/health" || true)
+              echo "$url/health (attempt $attempt): $body"
+              if echo "$body" | jq -e --arg sha "$GITHUB_SHA" '.status == "ok" and .version == $sha' >/dev/null 2>&1; then
+                continue 2
+              fi
+              sleep 10
+            done
+            echo "::error::$url never reported version $GITHUB_SHA with status ok"
+            exit 1
+          done
+
+      - name: Startup logs of the new revisions (migration lines)
+        if: always()
+        run: |
+          for svc in review ideas; do
+            echo "::group::$PREFIX-$svc"
+            az containerapp logs show -n "$PREFIX-$svc" -g "$RG" --type console --tail 40 --format text || true
+            echo "::endgroup::"
+          done
+
+      - name: Publish the UI to the storage static website
+        run: |
+          cat > ui/config.js <<EOF
+          // Written by the deploy workflow for commit $GITHUB_SHA.
+          window.PK_CONFIG = {
+            ideasUrl: "$IDEAS_URL",
+            reviewUrl: "$REVIEW_URL",
+          };
+          EOF
+          az storage blob upload-batch --account-name "$UI_STORAGE" --auth-mode key -d '$web' -s ui --overwrite \
+            --content-cache-control "no-cache" --output none
+          curl -sf "$UI_ORIGIN/config.js" | grep -q "$IDEAS_URL"
+          echo "UI live at $UI_ORIGIN"
