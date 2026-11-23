@@ -79,3 +79,30 @@ def test_connect_retries_while_the_database_resumes(monkeypatch):
     monkeypatch.setattr(pymssql, "connect", down)
     with pytest.raises(pymssql.OperationalError):
         connect("mssql://u:p@sql/ideas", attempts=2, sleep=waits.append)
+
+
+def test_002_keeps_every_row_and_backfills_when_each_idea_was_last_touched(fresh, tmp_path):
+    (tmp_path / "001_init.sql").write_text((FOLDER / "001_init.sql").read_text())
+    migrate(fresh, tmp_path)
+    fresh.execute(
+        "INSERT INTO ideas (display_name, token, created_at) VALUES ('Ada', 't1', '2026-11-01T10:00:00Z'), ('Bo', 't2', '2026-11-02T10:00:00Z')"
+    )
+    fresh.execute(
+        "INSERT INTO revisions (idea_id, parent_id, kind, one_liner, story, created_at) VALUES "
+        "(1, NULL, 'pitch', 'We help X', 'S', '2026-11-01T10:00:00Z'), (2, NULL, 'pitch', 'We help Y', 'S', '2026-11-02T10:00:00Z')"
+    )
+    fresh.execute("INSERT INTO revisions (idea_id, parent_id, kind, answer, created_at) VALUES (1, 1, 'answer', 'Ten paid', '2026-11-05T09:00:00Z')")
+    fresh.execute(
+        "INSERT INTO evidence (idea_id, session, who, spoken_on, quote, created_at) VALUES (2, 1, 'Lea', '2026-11-06', 'q', '2026-11-07T08:00:00Z')"
+    )
+    fresh.commit()
+
+    assert migrate(fresh) == ["002_add_updated_at.sql"]
+
+    rows = [tuple(row.values()) for row in fresh.execute("SELECT id, display_name, created_at, updated_at FROM ideas ORDER BY id")]
+    assert rows == [
+        (1, "Ada", "2026-11-01T10:00:00Z", "2026-11-05T09:00:00Z"),
+        (2, "Bo", "2026-11-02T10:00:00Z", "2026-11-07T08:00:00Z"),
+    ]
+    assert fresh.execute("SELECT COUNT(*) AS n FROM revisions").fetchone()["n"] == 3
+    assert fresh.execute("SELECT COUNT(*) AS n FROM evidence").fetchone()["n"] == 1

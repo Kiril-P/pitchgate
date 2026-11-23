@@ -21,7 +21,7 @@ from ideas.logic import (
 )
 
 COLUMNS = "id, idea_id, parent_id, kind, one_liner, story, answer, created_at"
-IDEA_COLUMNS = "id, display_name, status, station, token, tone, level, pivot_of, shared, created_at"
+IDEA_COLUMNS = "id, display_name, status, station, token, tone, level, pivot_of, shared, created_at, updated_at"
 
 
 def new_token():
@@ -51,11 +51,11 @@ def create_idea(
     created_at = now or utc_now()
     cursor = connection.execute(
         """
-        INSERT INTO ideas (display_name, station, token, tone, level, pivot_of, shared, consent_at, created_at)
+        INSERT INTO ideas (display_name, station, token, tone, level, pivot_of, shared, consent_at, created_at, updated_at)
         OUTPUT INSERTED.id
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
-        (text["display_name"], AFTER_PITCH, new_token(), tone, level, pivot_of, 1 if shared else 0, created_at, created_at),
+        (text["display_name"], AFTER_PITCH, new_token(), tone, level, pivot_of, 1 if shared else 0, created_at, created_at, created_at),
     )
     idea_id = cursor.fetchone()["id"]
     connection.execute(
@@ -91,16 +91,17 @@ def _insert_answer(connection, idea_id, parent_id, answer, now):
     status = _status_of(connection, idea_id)
     if status in CLOSED:
         raise IdeaClosed(status)
+    created_at = now or utc_now()
     connection.execute(
-        "UPDATE ideas SET status = 'cooking' WHERE id = %s",
-        (idea_id,),
+        "UPDATE ideas SET status = 'cooking', updated_at = %s WHERE id = %s",
+        (created_at, idea_id),
     )
     connection.execute(
         """
         INSERT INTO revisions (idea_id, parent_id, kind, answer, created_at)
         VALUES (%s, %s, 'answer', %s, %s)
         """,
-        (idea_id, parent_id, text, now or utc_now()),
+        (idea_id, parent_id, text, created_at),
     )
     connection.commit()
     return get_idea(connection, idea_id)
@@ -119,13 +120,15 @@ def add_evidence(connection, idea_id, session, fields, now=None, today=None):
     ).fetchone()["logged"]
     if logged >= EVIDENCE_PER_SESSION:
         raise IdeaTextError("who", "This session already has " + str(EVIDENCE_PER_SESSION) + " logs. Ask for the gate.")
+    created_at = now or utc_now()
     connection.execute(
         """
         INSERT INTO evidence (idea_id, session, kind, who, role, spoken_on, today_they, paid, quote, source, created_at)
         VALUES (%(idea_id)s, %(session)s, %(kind)s, %(who)s, %(role)s, %(spoken_on)s, %(today_they)s, %(paid)s, %(quote)s, %(source)s, %(created_at)s)
         """,
-        dict(entry, idea_id=idea_id, session=session, created_at=now or utc_now()),
+        dict(entry, idea_id=idea_id, session=session, created_at=created_at),
     )
+    connection.execute("UPDATE ideas SET updated_at = %s WHERE id = %s", (created_at, idea_id))
     connection.commit()
     return evidence_for(connection, idea_id)
 
@@ -195,7 +198,7 @@ def get_branch(connection, revision_id):
 def list_ideas(connection):
     """Every idea with its current branch summary and every timestamp the founder
     wrote something, for boards and the organizer view."""
-    ideas = connection.execute("SELECT " + IDEA_COLUMNS + " FROM ideas ORDER BY id DESC").fetchall()
+    ideas = connection.execute("SELECT " + IDEA_COLUMNS + " FROM ideas ORDER BY updated_at DESC, id DESC").fetchall()
     by_idea = {}
     for row in connection.execute("SELECT " + COLUMNS + " FROM revisions ORDER BY id").fetchall():
         by_idea.setdefault(row["idea_id"], []).append(_revision(row))
@@ -236,6 +239,7 @@ def _idea(row):
         "pivot_of": row["pivot_of"],
         "shared": bool(row["shared"]),
         "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
     }
 
 
