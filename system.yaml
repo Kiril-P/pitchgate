@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=./system.schema.json
+student: kpetrovski.ieu2024
+prefix: kpetrovski-ieu2024
+public_url: https://kpetrovskiieu2024ui.z28.web.core.windows.net
+
+ui:
+  path: ui
+  storage_account: kpetrovskiieu2024ui
+  calls: [ideas, review]
+
+azure:
+  resource_group: rg-kpetrovski-ieu2024
+  container_apps_environment: kpetrovski-ieu2024-env
+  sql_server: kpetrovski-ieu2024-sql
+  registry: ghcr.io/kiril-p
+
+services:
+  ideas:
+    description: >-
+      Everything the founder writes: ideas, the revision tree of pitch and answers, logged conversations and facts,
+      the starter pack Markdown and the organizer's cohort metrics. The UI's main service; calls review for every judgement.
+    path: services/ideas
+    openapi: services/ideas/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/ideas/migrations
+    env:
+      PORT: { default: 8000, description: Port the service listens on }
+      DATABASE_URL: { secret: true, description: "Connection string of the ideas database: mssql://user:password@host:1433/database[?encrypt=require]" }
+      VERSION: { default: dev, description: Commit SHA reported by /health; set at image build time }
+      DB_CONNECT_ATTEMPTS: { default: 8, description: Connection attempts at startup while a paused database resumes (backoff 2 to 20 s) }
+      REVIEW_URL: { default: "http://review:8000", description: Base URL of the review service }
+      REVIEW_TIMEOUT_S: { default: 5, description: Timeout for calls to review that do not wait on Jev or Chef }
+      REVIEW_SLOW_TIMEOUT_S: { default: 30, description: Timeout for calls to review that wait on Jev or Chef }
+      ORGANIZER_KEY: { secret: true, description: Key for GET /organizer; when unset the organizer view is off }
+      UI_ORIGIN: { default: "", description: The only browser origin allowed by CORS (the storage static website); empty allows none }
+    calls:
+      - service: review
+        url_env: REVIEW_URL
+        endpoints:
+          - POST /ideas/{idea_id}/state
+          - GET /ideas/{idea_id}/sessions
+          - DELETE /ideas/{idea_id}
+          - POST /summaries
+        timeout_s: 5
+        on_failure: >-
+          The idea page still loads with the founder's own text and a "Scores and Chef's questions can't be loaded right now"
+          notice; boards show ideas without labels. Answers, logs and deletes are refused with a 503 and save nothing.
+          The organizer view answers 503.
+      - service: review
+        url_env: REVIEW_URL
+        endpoints:
+          - POST /rounds
+          - POST /gates
+          - POST /serve
+          - POST /packs
+          - POST /facts
+        timeout_s: 30
+        on_failure: >-
+          A pitch or answer that was saved stays saved and shows as not scored yet, with a retry; a round that runs past
+          the timeout finishes in review and shows on the next load. Gates, serving, starter packs and fact search answer
+          503 with a message and change nothing.
+    azure:
+      container_app: kpetrovski-ieu2024-ideas
+      sql_database: kpetrovski-ieu2024-ideas-db
+
+  review:
+    description: >-
+      Everything the app says back: Jev's verdicts and tasting gates, Chef's questions, homework, pitches and starter
+      packs, the Jev call budget, and Chef's prep suggestions. Keyed by the idea and revision ids ideas sends; calls no other service.
+    path: services/review
+    openapi: services/review/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/review/migrations
+    env:
+      PORT: { default: 8000, description: Port the service listens on }
+      DATABASE_URL: { secret: true, description: "Connection string of the review database: mssql://user:password@host:1433/database[?encrypt=require]" }
+      VERSION: { default: dev, description: Commit SHA reported by /health; set at image build time }
+      DB_CONNECT_ATTEMPTS: { default: 8, description: Connection attempts at startup while a paused database resumes (backoff 2 to 20 s) }
+      TYPESAFE_API_KEY: { secret: true, description: Key for Jev (Typesafe); without it verdicts and gates stay PENDING }
+      JEV_BUDGET_PER_IDEA: { default: 15, description: Most successful Jev calls one idea may make }
+      COACH_API_KEY: { secret: true, description: Key for Chef's OpenAI-compatible chat endpoint (Gemini); without it Chef pauses }
+      COACH_URL: { default: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", description: Chef's chat endpoint }
+      COACH_MODEL: { default: "gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite", description: "Chef's models, tried in order while the step's time budget allows" }
+      UI_ORIGIN: { default: "", description: The only browser origin allowed by CORS (the storage static website); empty allows none }
+    calls: []
+    azure:
+      container_app: kpetrovski-ieu2024-review
+      sql_database: kpetrovski-ieu2024-review-db

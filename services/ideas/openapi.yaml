@@ -1,0 +1,367 @@
+openapi: 3.1.0
+info:
+  title: Pitch Kitchen ideas service
+  version: "2.0"
+  description: >-
+    Everything the founder writes: ideas, the revision tree of pitch and answers, logged conversations and facts,
+    the starter pack Markdown and the organizer view. The UI calls this service for everything about an idea; it calls
+    the review service for every judgement (see system.yaml). An idea is addressed by its private token. Every error
+    is JSON `{"error": "...", "field": "..."}`; `field` names the form field when the input was rejected.
+servers:
+  - url: http://localhost:8001
+    description: docker compose
+  - url: https://kpetrovski-ieu2024-ideas.wonderfulforest-d23e7ffc.francecentral.azurecontainerapps.io
+    description: Azure Container Apps
+
+paths:
+  /health:
+    get:
+      summary: This service's own health (reads and writes its own database; never calls review)
+      responses:
+        "200": { description: Healthy, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+        "503": { description: Cannot read and write its database, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+
+  /ideas:
+    get:
+      summary: This browser's ideas on boards, plus ideas others shared
+      parameters:
+        - name: mine
+          in: query
+          required: false
+          description: Comma-separated tokens this browser keeps
+          schema: { type: string }
+      responses:
+        "200": { description: Boards, content: { application/json: { schema: { $ref: "#/components/schemas/Boards" } } } }
+    post:
+      summary: Pitch a new idea; it is saved first, then scored by review if review answers
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PitchRequest" } } }
+      responses:
+        "201": { $ref: "#/components/responses/Page" }
+        "400": { $ref: "#/components/responses/Rejected" }
+
+  /ideas/{token}:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    get:
+      summary: The idea page
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Delete the idea; review forgets its scores first, and nothing is deleted if review is unreachable
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/answers:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Answer Chef's question (only while review says the session is open)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnswerRequest" } } }
+      responses:
+        "201": { $ref: "#/components/responses/Page" }
+        "400": { $ref: "#/components/responses/Rejected" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/answers/{revision_id}:
+    parameters:
+      - { $ref: "#/components/parameters/Token" }
+      - { name: revision_id, in: path, required: true, schema: { type: integer } }
+    post:
+      summary: Save a new version of an answer as a sibling revision and rescore it
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnswerRequest" } } }
+      responses:
+        "201": { $ref: "#/components/responses/Page" }
+        "400": { $ref: "#/components/responses/Rejected" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /ideas/{token}/retry:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Run the round again for the newest revision (after Jev or Chef paused)
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/evidence:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Log a real conversation or a fact in the current session
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/EvidenceRequest" } } }
+      responses:
+        "201": { $ref: "#/components/responses/Page" }
+        "400": { $ref: "#/components/responses/Rejected" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/facts/search:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Ask review for facts about the problem, leaving out facts already kept
+      responses:
+        "200":
+          description: Fresh facts, or suggested searches when web search is unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [facts, searches, notice]
+                properties:
+                  facts:
+                    type: array
+                    items:
+                      type: object
+                      required: [fact, source, site]
+                      properties: { fact: { type: string }, source: { type: string }, site: { type: string } }
+                  searches:
+                    type: array
+                    items:
+                      type: object
+                      required: [find, query]
+                      properties: { find: { type: string }, query: { type: string } }
+                  notice: { type: [string, "null"] }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/facts:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Keep the facts the founder ticked
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [facts]
+              properties:
+                facts:
+                  type: array
+                  items:
+                    type: object
+                    required: [quote, source]
+                    properties: { quote: { type: string }, source: { type: string }, who: { type: string } }
+      responses:
+        "201": { $ref: "#/components/responses/Page" }
+        "400": { $ref: "#/components/responses/Rejected" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/gate:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Ask Jev to taste this session's logs; a pass opens the next session
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/serve:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Serve the idea (needs a PROVEN verdict and 3 real conversations)
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/pack:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Have Chef write or rewrite the starter pack
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/starter-pack.md:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    get:
+      summary: Download the starter pack as Markdown
+      responses:
+        "200":
+          description: The starter pack
+          content: { text/markdown: { schema: { type: string } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+  /ideas/{token}/park:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Save and stop; the next answer reopens the idea
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /ideas/{token}/share:
+    parameters: [{ $ref: "#/components/parameters/Token" }]
+    post:
+      summary: Show or hide the idea on the cohort board
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /organizer:
+    get:
+      summary: Cohort metrics and every idea, for organizers holding the key
+      parameters:
+        - { name: X-Organizer-Key, in: header, required: false, schema: { type: string } }
+        - { name: key, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Rows (stuck first) and metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows, metrics, today]
+                properties:
+                  rows: { type: array, items: { type: object } }
+                  metrics: { type: object }
+                  today: { type: string, format: date }
+        "403": { description: Missing or wrong key, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: The organizer view is off (no ORGANIZER_KEY), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { $ref: "#/components/responses/ReviewDown" }
+
+components:
+  parameters:
+    Token:
+      name: token
+      in: path
+      required: true
+      description: The idea's private token
+      schema: { type: string }
+
+  responses:
+    Page:
+      description: The idea page after the change
+      content: { application/json: { schema: { $ref: "#/components/schemas/IdeaPage" } } }
+    Rejected:
+      description: Input rejected; nothing was saved
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: No idea at this link
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Conflict:
+      description: The idea is closed or the session is over or review refused
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    ReviewDown:
+      description: Review could not be reached in time or Chef could not answer; nothing was saved
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        field: { type: string }
+
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status: { type: string, enum: [ok, error] }
+        db: { type: string, enum: [ok, error] }
+        version: { type: string, description: Commit SHA of the running image }
+
+    PitchRequest:
+      type: object
+      required: [display_name, one_liner, story, consent]
+      properties:
+        display_name: { type: string, maxLength: 80 }
+        one_liner: { type: string, maxLength: 200 }
+        story: { type: string, maxLength: 2000 }
+        consent: { type: boolean }
+        tone: { type: string, enum: [supportive, tough, ramsay], default: tough }
+        level: { type: string, enum: [new, idea, tested], default: idea }
+        shared: { type: boolean, default: false }
+        pivot: { type: string, description: Token of the idea this one pivots from }
+
+    AnswerRequest:
+      type: object
+      required: [answer]
+      properties: { answer: { type: string, maxLength: 1000 } }
+
+    EvidenceRequest:
+      type: object
+      required: [spoken_on]
+      properties:
+        kind: { type: string, enum: [conversation, fact], default: conversation }
+        who: { type: string }
+        role: { type: string }
+        spoken_on: { type: string, format: date }
+        today_they: { type: string }
+        paid: { type: string }
+        quote: { type: string }
+        source: { type: string }
+
+    Idea:
+      type: object
+      required: [id, token, display_name, status, station, tone, level, shared, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        token: { type: string }
+        display_name: { type: string }
+        status: { type: string, enum: [cooking, parked, served, binned] }
+        station: { type: string, enum: [prep, grill, tasting, plating, recipe, mise, takeaway] }
+        station_name: { type: string }
+        tone: { type: string }
+        level: { type: string }
+        pivot_of: { type: [integer, "null"] }
+        shared: { type: boolean }
+        created_at: { type: string }
+        updated_at: { type: string }
+
+    IdeaPage:
+      type: object
+      required: [idea, stations, branch, closed, evidence, talks, facts, pivot_from, limits, review, notice]
+      properties:
+        idea: { $ref: "#/components/schemas/Idea" }
+        stations: { type: array, items: { type: object } }
+        branch:
+          type: array
+          description: Pitch first, then answers; each with review's verdict and Chef's turn when review answered
+          items: { type: object }
+        closed: { type: boolean }
+        evidence: { type: array, items: { type: object } }
+        talks: { type: integer }
+        facts: { type: integer }
+        pivot_from: { type: [object, "null"] }
+        limits: { type: object }
+        review:
+          type: [object, "null"]
+          description: Review's side of the page (step, gate, budget, pack); null when review could not be reached
+        notice: { type: [string, "null"] }
+
+    Boards:
+      type: object
+      required: [boards, cohort, notice]
+      properties:
+        boards:
+          type: array
+          items:
+            type: object
+            required: [key, title, ideas]
+            properties:
+              key: { type: string }
+              title: { type: string }
+              ideas: { type: array, items: { type: object } }
+        cohort: { type: array, items: { type: object } }
+        notice: { type: [string, "null"], description: Set when labels could not be loaded from review }

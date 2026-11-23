@@ -1,0 +1,456 @@
+openapi: 3.1.0
+info:
+  title: Pitch Kitchen review service
+  version: "2.0"
+  description: >-
+    Everything the app says back about an idea: Jev's verdicts and tasting gates, Chef's messages, the Jev budget,
+    and Chef's prep suggestions. Ideas and revisions belong to the ideas service; here they are plain ids that
+    ideas sends. Every error is JSON `{"error": "..."}`. Only the ideas service calls the idea endpoints; the UI calls
+    the suggestion endpoints directly.
+servers:
+  - url: http://localhost:8002
+    description: docker compose
+  - url: https://kpetrovski-ieu2024-review.wonderfulforest-d23e7ffc.francecentral.azurecontainerapps.io
+    description: Azure Container Apps
+
+paths:
+  /health:
+    get:
+      summary: This service's own health (reads and writes its own database)
+      responses:
+        "200": { description: Healthy, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+        "503": { description: Cannot read and write its database, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+
+  /rounds:
+    post:
+      summary: Score the newest revision on a branch with Jev, then have Chef answer it
+      description: Safe to call again; a finished verdict, Chef turn or homework is never redone. Waits on Jev and Chef (at most about 28 s).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/RoundRequest" } } }
+      responses:
+        "200": { description: The round result, content: { application/json: { schema: { $ref: "#/components/schemas/RoundResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /ideas/{idea_id}/state:
+    post:
+      summary: Everything review knows about one branch, plus the rules that depend on the founder's logs
+      description: A read; it is a POST because the founder's logs, which belong to ideas, arrive in the body.
+      parameters: [{ $ref: "#/components/parameters/IdeaId" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StateRequest" } } }
+      responses:
+        "200": { description: Branch state, content: { application/json: { schema: { $ref: "#/components/schemas/State" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /ideas/{idea_id}/sessions:
+    get:
+      summary: How many grill sessions are open (passed gates + 1)
+      parameters: [{ $ref: "#/components/parameters/IdeaId" }]
+      responses:
+        "200":
+          description: Session count
+          content:
+            application/json:
+              schema: { type: object, required: [sessions], properties: { sessions: { type: integer, minimum: 1 } } }
+
+  /ideas/{idea_id}:
+    delete:
+      summary: Forget an idea's verdicts, gates, Chef messages and Jev calls
+      parameters:
+        - { $ref: "#/components/parameters/IdeaId" }
+        - name: revisions
+          in: query
+          required: false
+          description: Comma-separated revision ids of the idea
+          schema: { type: string, pattern: "^[0-9]*(,[0-9]+)*$" }
+      responses:
+        "204": { description: Forgotten }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /summaries:
+    post:
+      summary: The verdict label of every revision and the passed gates of each idea, for boards and the organizer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ideas]
+              properties:
+                ideas:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, revision_ids]
+                    properties:
+                      id: { type: integer }
+                      revision_ids: { $ref: "#/components/schemas/RevisionIds" }
+      responses:
+        "200":
+          description: Keyed by idea id
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ideas]
+                properties:
+                  ideas:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      required: [labels, gates_passed]
+                      properties:
+                        labels: { type: array, items: { $ref: "#/components/schemas/Label" } }
+                        gates_passed: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /gates:
+    post:
+      summary: Score this session's tasting logs with Jev and store the gate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idea_id, head_id, founder_text]
+              properties:
+                idea_id: { type: integer }
+                head_id: { type: integer, description: Newest revision on the branch }
+                founder_text: { $ref: "#/components/schemas/FounderText" }
+                level: { $ref: "#/components/schemas/Level" }
+      responses:
+        "200": { description: The stored gate, content: { application/json: { schema: { $ref: "#/components/schemas/Gate" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: "Too few logs this session, or nothing new since the last try", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /serve:
+    post:
+      summary: Have Chef write the final pitch and next steps (needs PROVEN and 3 real conversations)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BranchText" } } }
+      responses:
+        "200":
+          description: The served pitch
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pitch, next_steps]
+                properties:
+                  pitch: { type: string }
+                  next_steps: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: Not servable yet, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { $ref: "#/components/responses/ChefUnavailable" }
+
+  /packs:
+    post:
+      summary: Have Chef plan the starter pack and store it on the newest revision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: "#/components/schemas/BranchText" }
+                - type: object
+                  required: [verified]
+                  properties: { verified: { type: boolean } }
+      responses:
+        "200": { description: The stored plan, content: { application/json: { schema: { $ref: "#/components/schemas/Pack" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "503": { $ref: "#/components/responses/ChefUnavailable" }
+
+  /suggestions/one-liners:
+    post:
+      summary: Three one-liners from a rough idea or story (called by the UI)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 2000 } } }
+      responses:
+        "200":
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestions]
+                properties:
+                  suggestions:
+                    type: array
+                    items: { type: object, required: [one_liner], properties: { one_liner: { type: string } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "503": { $ref: "#/components/responses/ChefUnavailable" }
+
+  /suggestions/sparks:
+    post:
+      summary: Three problems worth testing, for a founder with no idea yet (called by the UI)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [about], properties: { about: { type: string, maxLength: 2000 } } }
+      responses:
+        "200":
+          description: Sparks
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestions]
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      required: [one_liner, story, first_fact]
+                      properties:
+                        one_liner: { type: string }
+                        story: { type: string }
+                        first_fact: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "503": { $ref: "#/components/responses/ChefUnavailable" }
+
+  /facts:
+    post:
+      summary: Facts about the problem from a web search, or searches to run by hand when search is unavailable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [one_liner, story]
+              properties:
+                one_liner: { type: string }
+                story: { type: string }
+      responses:
+        "200":
+          description: Facts, each with its source; or no facts and suggested searches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [facts]
+                properties:
+                  facts:
+                    type: array
+                    items:
+                      type: object
+                      required: [fact, source, site]
+                      properties:
+                        fact: { type: string }
+                        source: { type: string, format: uri }
+                        site: { type: string }
+                  searches:
+                    type: array
+                    items:
+                      type: object
+                      required: [find, query]
+                      properties:
+                        find: { type: string }
+                        query: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "503": { $ref: "#/components/responses/ChefUnavailable" }
+
+components:
+  parameters:
+    IdeaId:
+      name: idea_id
+      in: path
+      required: true
+      description: Id of the idea in the ideas service
+      schema: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Not a JSON object, or a required field is missing
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    ChefUnavailable:
+      description: Chef could not answer in time; nothing was stored
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties: { error: { type: string } }
+
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status: { type: string, enum: [ok, error] }
+        db: { type: string, enum: [ok, error] }
+        version: { type: string, description: Commit SHA of the running image }
+
+    Label: { type: string, enum: [UNPROVEN, PARTIAL, PROVEN, PENDING] }
+    Level: { type: string, enum: [new, idea, tested], default: idea }
+    Step: { type: string, enum: [open, homework, binned] }
+
+    RevisionIds:
+      type: array
+      minItems: 1
+      items: { type: integer }
+      description: Ids of the revisions on the branch, pitch first
+
+    Evidence:
+      type: object
+      description: One logged conversation or fact, as stored by the ideas service
+      required: [id, session, kind, who, spoken_on, quote]
+      properties:
+        id: { type: integer }
+        idea_id: { type: integer }
+        session: { type: integer }
+        kind: { type: string, enum: [conversation, fact] }
+        who: { type: string }
+        role: { type: string }
+        spoken_on: { type: string, format: date }
+        today_they: { type: string }
+        paid: { type: string }
+        quote: { type: string }
+        source: { type: string }
+        created_at: { type: string }
+
+    FounderText:
+      type: object
+      description: A snapshot of what the founder wrote on the branch
+      required: [one_liner, story, answers, evidence]
+      properties:
+        one_liner: { type: string }
+        story: { type: string }
+        answers: { type: array, items: { type: string } }
+        evidence: { type: array, items: { $ref: "#/components/schemas/Evidence" } }
+
+    BranchText:
+      type: object
+      required: [revision_ids, founder_text]
+      properties:
+        revision_ids: { $ref: "#/components/schemas/RevisionIds" }
+        founder_text: { $ref: "#/components/schemas/FounderText" }
+
+    RoundRequest:
+      type: object
+      required: [idea_id, revision_ids, founder_text]
+      properties:
+        idea_id: { type: integer }
+        revision_ids: { $ref: "#/components/schemas/RevisionIds" }
+        founder_text: { $ref: "#/components/schemas/FounderText" }
+        tone: { type: string, enum: [supportive, tough, ramsay], default: tough }
+        level: { $ref: "#/components/schemas/Level" }
+
+    RoundResult:
+      type: object
+      required: [verdict, step, paused]
+      properties:
+        verdict: { $ref: "#/components/schemas/Verdict" }
+        step: { $ref: "#/components/schemas/Step" }
+        paused: { type: [string, "null"], enum: [jev, chef, null] }
+
+    Verdict:
+      type: object
+      required: [revision_id, label, rule, explanation]
+      properties:
+        id: { type: integer }
+        revision_id: { type: integer }
+        label: { $ref: "#/components/schemas/Label" }
+        rule: { type: string }
+        explanation: { type: string }
+        market_need: { type: [number, "null"] }
+        feasibility: { type: [number, "null"] }
+        differentiation: { type: [number, "null"] }
+        safety_risk: { type: [number, "null"] }
+        confidence: { type: [number, "null"] }
+        evidence: { type: [number, "null"] }
+        answered: { type: [number, "null"] }
+        market_need_band: { type: string }
+        feasibility_band: { type: string }
+        differentiation_band: { type: string }
+        evidence_band: { type: string }
+        focus: { type: [string, "null"] }
+        recommendation: { type: [string, "null"] }
+        created_at: { type: string }
+
+    ChefMessage:
+      type: object
+      required: [body, question, created_at, revision_id]
+      properties:
+        body: { description: Text, or parsed JSON for homework, next_steps and starter_pack }
+        question: { type: string }
+        created_at: { type: string }
+        revision_id: { type: integer }
+
+    Gate:
+      type: object
+      required: [idea_id, session, last_evidence_id, label, rule, explanation]
+      properties:
+        id: { type: integer }
+        idea_id: { type: integer }
+        session: { type: integer }
+        last_evidence_id: { type: integer }
+        label: { type: string, enum: [PASSED, SENT_BACK, PENDING] }
+        rule: { type: string }
+        explanation: { type: string }
+        evidence_strength: { type: [number, "null"] }
+        pain_frequency: { type: [number, "null"] }
+        willingness_to_pay: { type: [number, "null"] }
+        safety_risk: { type: [number, "null"] }
+        evidence_strength_band: { type: string }
+        pain_frequency_band: { type: string }
+        willingness_to_pay_band: { type: string }
+        created_at: { type: string }
+
+    Pack:
+      type: object
+      description: Chef's starter pack plan, with how many logs it saw and whether the idea was served
+      required: [verified, logs]
+      properties:
+        verified: { type: boolean }
+        logs: { type: integer }
+      additionalProperties: true
+
+    StateRequest:
+      type: object
+      required: [revision_ids]
+      properties:
+        revision_ids: { $ref: "#/components/schemas/RevisionIds" }
+        evidence: { type: array, items: { $ref: "#/components/schemas/Evidence" } }
+        level: { $ref: "#/components/schemas/Level" }
+
+    State:
+      type: object
+      required:
+        [sessions, step, verdicts, chef, homework, pack, gate, answers_left, session_answers, servable, serve_min_logs, starter, starter_gate, jev_used, jev_budget]
+      properties:
+        sessions: { type: integer }
+        step: { $ref: "#/components/schemas/Step" }
+        verdicts: { type: object, description: Keyed by revision id, additionalProperties: { $ref: "#/components/schemas/Verdict" } }
+        chef:
+          type: object
+          description: Keyed by revision id, then by kind (turn, polished, homework, next_steps, starter_pack)
+          additionalProperties: { type: object, additionalProperties: { $ref: "#/components/schemas/ChefMessage" } }
+        homework: { type: [object, "null"] }
+        pack: { oneOf: [{ $ref: "#/components/schemas/ChefMessage" }, { type: "null" }] }
+        gate:
+          type: object
+          required: [session, logs, ready, latest]
+          properties:
+            session: { type: integer }
+            logs: { type: array, items: { $ref: "#/components/schemas/Evidence" } }
+            ready: { type: boolean }
+            latest: { oneOf: [{ $ref: "#/components/schemas/Gate" }, { type: "null" }] }
+        answers_left: { type: integer }
+        session_answers: { type: integer }
+        servable: { type: boolean }
+        serve_min_logs: { type: integer }
+        starter: { type: boolean }
+        starter_gate: { type: boolean }
+        jev_used: { type: integer }
+        jev_budget: { type: integer }
