@@ -244,6 +244,18 @@ def test_list_ideas_shows_the_branch_and_activity(db):
     assert listed[1]["activity"] == ["2026-10-01T09:00:00Z", "2026-10-02T09:00:00Z"]
 
 
+def test_the_most_recently_touched_idea_is_listed_first(db):
+    older = create_idea(db, "Ada", "Older", "Story", now="2026-10-01T09:00:00Z")
+    newer = create_idea(db, "Bo", "Newer", "Story", now="2026-10-02T09:00:00Z")
+    assert [idea["one_liner"] for idea in list_ideas(db)] == ["Newer", "Older"]
+
+    add_answer(db, older["id"], "First", now="2026-10-03T09:00:00Z")
+    assert [idea["one_liner"] for idea in list_ideas(db)] == ["Older", "Newer"]
+
+    add_evidence(db, newer["id"], 1, conversation_log(), now="2026-10-04T09:00:00Z", today=TODAY)
+    assert list_ideas(db)[0]["updated_at"] == "2026-10-04T09:00:00Z"
+
+
 def test_sharing_and_deleting_a_pivot_source(db):
     source = create_idea(db, "Ada", "Old idea", "Story")
     pivot = create_idea(db, "Ada", "New idea", "Story", pivot_of=source["id"])
