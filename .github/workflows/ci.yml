@@ -24,6 +24,18 @@ jobs:
       - run: pip install ruff==0.17.6
       - run: ruff check services tests
 
+  validate:
+    name: validate system.yaml and OpenAPI
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install check-jsonschema==0.39.0 openapi-spec-validator==0.9.0
+      - run: check-jsonschema --schemafile system.schema.json system.yaml
+      - run: openapi-spec-validator services/ideas/openapi.yaml services/review/openapi.yaml
+
   test:
     name: test (${{ matrix.service }})
     runs-on: ubuntu-24.04
