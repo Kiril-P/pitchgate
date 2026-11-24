@@ -66,42 +66,30 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Look up the public addresses
-        run: |
-          review_fqdn=$(az containerapp show -n "$PREFIX-review" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
-          ideas_fqdn=$(az containerapp show -n "$PREFIX-ideas" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
-          ui_origin=$(az storage account show -n "$UI_STORAGE" -g "$RG" --query primaryEndpoints.web -o tsv)
-          echo "REVIEW_URL=https://$review_fqdn" >> "$GITHUB_ENV"
-          echo "IDEAS_URL=https://$ideas_fqdn" >> "$GITHUB_ENV"
-          echo "UI_ORIGIN=${ui_origin%/}" >> "$GITHUB_ENV"
-
-      - name: Deploy review
+      - name: Apply infra/main.bicep with the new images (infrastructure and release in one deployment)
         env:
-          DB_PASSWORD: ${{ secrets.REVIEW_DB_PASSWORD }}
+          SQL_ADMIN_PASSWORD: ${{ secrets.SQL_ADMIN_PASSWORD }}
+          IDEAS_DB_PASSWORD: ${{ secrets.IDEAS_DB_PASSWORD }}
+          REVIEW_DB_PASSWORD: ${{ secrets.REVIEW_DB_PASSWORD }}
+          ORGANIZER_KEY: ${{ secrets.ORGANIZER_KEY }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           COACH_API_KEY: ${{ secrets.COACH_API_KEY }}
         run: |
-          az containerapp secret set -n "$PREFIX-review" -g "$RG" --output none --secrets \
-            "database-url=mssql://review_app:${DB_PASSWORD}@${SQL_HOST}:1433/${PREFIX}-review-db?encrypt=require" \
-            "typesafe-api-key=${TYPESAFE_API_KEY}" \
-            "coach-api-key=${COACH_API_KEY}"
-          az containerapp update -n "$PREFIX-review" -g "$RG" --output none \
-            --image "$REGISTRY/pitchgate-review:$GITHUB_SHA" \
-            --set-env-vars DATABASE_URL=secretref:database-url TYPESAFE_API_KEY=secretref:typesafe-api-key \
-              COACH_API_KEY=secretref:coach-api-key UI_ORIGIN="$UI_ORIGIN"
+          outputs=$(az deployment group create -g "$RG" -n "release-${GITHUB_SHA::12}" -f infra/main.bicep \
+            --query properties.outputs -o json -p \
+            prefix="$PREFIX" uiStorageName="$UI_STORAGE" imageTag="$GITHUB_SHA" \
+            sqlAdminPassword="$SQL_ADMIN_PASSWORD" \
+            ideasDatabaseUrl="mssql://ideas_app:${IDEAS_DB_PASSWORD}@${SQL_HOST}:1433/${PREFIX}-ideas-db?encrypt=require" \
+            reviewDatabaseUrl="mssql://review_app:${REVIEW_DB_PASSWORD}@${SQL_HOST}:1433/${PREFIX}-review-db?encrypt=require" \
+            organizerKey="$ORGANIZER_KEY" typesafeApiKey="$TYPESAFE_API_KEY" coachApiKey="$COACH_API_KEY")
+          echo "IDEAS_URL=$(jq -r .ideasUrl.value <<<"$outputs")" >> "$GITHUB_ENV"
+          echo "REVIEW_URL=$(jq -r .reviewUrl.value <<<"$outputs")" >> "$GITHUB_ENV"
+          echo "UI_ORIGIN=$(jq -r .uiOrigin.value <<<"$outputs")" >> "$GITHUB_ENV"
 
-      - name: Deploy ideas
-        env:
-          DB_PASSWORD: ${{ secrets.IDEAS_DB_PASSWORD }}
-          ORGANIZER_KEY: ${{ secrets.ORGANIZER_KEY }}
+      - name: Serve the UI as a static website (a data-plane setting Bicep cannot hold; idempotent)
         run: |
-          az containerapp secret set -n "$PREFIX-ideas" -g "$RG" --output none --secrets \
-            "database-url=mssql://ideas_app:${DB_PASSWORD}@${SQL_HOST}:1433/${PREFIX}-ideas-db?encrypt=require" \
-            "organizer-key=${ORGANIZER_KEY}"
-          az containerapp update -n "$PREFIX-ideas" -g "$RG" --output none \
-            --image "$REGISTRY/pitchgate-ideas:$GITHUB_SHA" \
-            --set-env-vars DATABASE_URL=secretref:database-url ORGANIZER_KEY=secretref:organizer-key \
-              REVIEW_URL="$REVIEW_URL" UI_ORIGIN="$UI_ORIGIN"
+          az storage blob service-properties update --account-name "$UI_STORAGE" --static-website \
+            --index-document index.html --auth-mode key --output none
 
       - name: Wait until both services report this commit on /health
         run: |
