@@ -119,21 +119,24 @@ Dependabot opens weekly pull requests for the Python packages, the base images a
 1. calls `ci.yml`, so nothing deploys unless CI passed on that commit;
 2. pushes `ghcr.io/kiril-p/pitchgate-ideas:<sha>` and `pitchgate-review:<sha>` (public packages, `provenance: false`);
 3. signs in to Azure as the managed identity `kpetrovski-ieu2024-github` over OpenID Connect (no password exists);
-4. sets each Container App's secrets from GitHub secrets and points it at the new image (`az containerapp secret set`, `az containerapp update`);
+4. applies `infra/main.bicep` with `az deployment group create`: the storage account, the SQL server, its firewall rule and both databases, the Container Apps environment, and both apps with their secrets (from GitHub secrets) and the new image tags; then switches on the storage static website, a data-plane setting Bicep cannot hold;
 5. waits until both `/health` endpoints report the new commit, then prints each new revision's startup log (migration lines) into the run;
 6. writes `ui/config.js` with both service URLs and uploads `ui/` to the storage account's `$web` container.
 
-GitHub secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `IDEAS_DB_PASSWORD`, `REVIEW_DB_PASSWORD`, `ORGANIZER_KEY`, `TYPESAFE_API_KEY`, `COACH_API_KEY`. Variables: `PREFIX`, `RESOURCE_GROUP`, `UI_STORAGE`.
+GitHub secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `SQL_ADMIN_PASSWORD`, `IDEAS_DB_PASSWORD`, `REVIEW_DB_PASSWORD`, `ORGANIZER_KEY`, `TYPESAFE_API_KEY`, `COACH_API_KEY`. Variables: `PREFIX`, `RESOURCE_GROUP`, `UI_STORAGE`.
 
 ## Azure initial setup (done once; reproduce in bash)
 
-Everything is in `rg-kpetrovski-ieu2024` in `francecentral`; after this, only the pipeline changes anything. Passwords are generated locally and never written in the repository.
+Everything is in `rg-kpetrovski-ieu2024` in `francecentral`. The resources themselves are defined in `infra/main.bicep`, which the deploy workflow applies on every push to `main`; `az deployment group what-if` against the live group showed no change other than read-only fields, so the template matches what the commands below created. What Bicep cannot hold is done once by hand: the providers, the pipeline's identity and every role assignment (the identity only has Contributor, which cannot grant roles), the GitHub secrets, and the contained database users (a data-plane setting). Passwords are generated locally into the git-ignored `.env.azure` and never written in the repository.
+
+These are the commands as they were run on 22 November 2026, in order:
 
 ```bash
 PREFIX=kpetrovski-ieu2024; RG=rg-$PREFIX; LOCATION=francecentral
 STORAGE=kpetrovskiieu2024ui; SQL_SERVER=$PREFIX-sql; ENVIRONMENT=$PREFIX-env; GH_REPO=Kiril-P/pitchgate
+set -a; source .env.azure; set +a     # SQL_ADMIN_PASSWORD, IDEAS_DB_PASSWORD, REVIEW_DB_PASSWORD, ORGANIZER_KEY
 
-# 1. Region (from the "Allowed resource deployment regions" policy) and providers
+# 1. Region (from the "Allowed resource deployment regions" policy), providers, resource group
 az policy assignment list --query "[?displayName=='Allowed resource deployment regions'].parameters.listOfAllowedLocations.value"
 for p in Microsoft.App Microsoft.OperationalInsights Microsoft.Sql Microsoft.Storage Microsoft.ManagedIdentity; do az provider register -n $p; done
 az group create -n $RG -l $LOCATION
@@ -149,13 +152,25 @@ for svc in ideas review; do
   az sql db create -g $RG -s $SQL_SERVER -n $PREFIX-$svc-db --edition GeneralPurpose --family Gen5 --capacity 1 --min-capacity 0.5 \
     --compute-model Serverless --backup-storage-redundancy Local --use-free-limit true --free-limit-exhaustion-behavior AutoPause
 done
-# One contained user per database, with the firewall open to my IP only while doing it. As pkadmin, in <svc>-db:
-#   CREATE USER [<svc>_app] WITH PASSWORD = '<password>';
-#   ALTER ROLE db_ddladmin ADD MEMBER [<svc>_app]; ALTER ROLE db_datareader ADD MEMBER [<svc>_app]; ALTER ROLE db_datawriter ADD MEMBER [<svc>_app];
-az sql server firewall-rule create -g $RG -s $SQL_SERVER -n Setup --start-ip-address "$MYIP" --end-ip-address "$MYIP"
-az sql server firewall-rule delete -g $RG -s $SQL_SERVER -n Setup
 
-# 4. Container Apps (Consumption, 0 to 1 replicas, no Log Analytics workspace; CORS is in the code, not the ingress)
+# 4. One contained user per database, able to open only its own database (firewall open to my IP only meanwhile)
+MYIP=$(curl -s https://api.ipify.org)
+az sql server firewall-rule create -g $RG -s $SQL_SERVER -n SetupFromMyMac --start-ip-address $MYIP --end-ip-address $MYIP
+python - <<'PY'
+import os, pymssql
+for svc in ("ideas", "review"):
+    db, user, password = f"kpetrovski-ieu2024-{svc}-db", f"{svc}_app", os.environ[f"{svc.upper()}_DB_PASSWORD"]
+    conn = pymssql.connect(server="kpetrovski-ieu2024-sql.database.windows.net", user="pkadmin", password=os.environ["SQL_ADMIN_PASSWORD"],
+                           database=db, encryption="require", autocommit=True)
+    cur = conn.cursor()
+    cur.execute(f"IF USER_ID('{user}') IS NULL CREATE USER [{user}] WITH PASSWORD = %s", (password,))
+    for role in ("db_ddladmin", "db_datareader", "db_datawriter"):
+        cur.execute(f"IF IS_ROLEMEMBER('{role}', '{user}') = 0 ALTER ROLE {role} ADD MEMBER [{user}]")
+PY
+az sql server firewall-rule delete -g $RG -s $SQL_SERVER -n SetupFromMyMac
+
+# 5. Container Apps (Consumption, 0 to 1 replicas, no Log Analytics workspace; CORS is in the code, not the ingress)
+az extension add -n containerapp --upgrade
 az containerapp env create -n $ENVIRONMENT -g $RG -l $LOCATION --logs-destination none
 for svc in review ideas; do
   az containerapp create -n $PREFIX-$svc -g $RG --environment $ENVIRONMENT --image mcr.microsoft.com/k8se/quickstart:latest \
@@ -163,7 +178,7 @@ for svc in review ideas; do
     --env-vars UI_ORIGIN=https://kpetrovskiieu2024ui.z28.web.core.windows.net
 done
 
-# 5. The pipeline's identity: Contributor on this resource group only, trusted for main of this repository
+# 6. The pipeline's identity: Contributor on this resource group only, trusted for main of this repository
 az identity create -n $PREFIX-github -g $RG
 az role assignment create --assignee-object-id "$(az identity show -n $PREFIX-github -g $RG --query principalId -o tsv)" \
   --assignee-principal-type ServicePrincipal --role Contributor --scope "$(az group show -n $RG --query id -o tsv)"
@@ -172,13 +187,24 @@ az identity federated-credential create --identity-name $PREFIX-github -g $RG -n
 az identity federated-credential create --identity-name $PREFIX-github -g $RG -n github-main-ids \
   --issuer https://token.actions.githubusercontent.com --subject "repo:Kiril-P@194789402/pitchgate@1392491780:ref:refs/heads/main" --audiences api://AzureADTokenExchange
 
-# 6. GitHub secrets and variables (values from the steps above; never committed)
-for s in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID IDEAS_DB_PASSWORD REVIEW_DB_PASSWORD ORGANIZER_KEY TYPESAFE_API_KEY COACH_API_KEY; do gh secret set $s; done
+# 7. GitHub secrets and variables (values from .env.azure and the API keys; never committed)
+gh secret set AZURE_CLIENT_ID --body "$(az identity show -n $PREFIX-github -g $RG --query clientId -o tsv)"
+gh secret set AZURE_TENANT_ID --body "$(az account show --query tenantId -o tsv)"
+gh secret set AZURE_SUBSCRIPTION_ID --body "$(az account show --query id -o tsv)"
+for s in SQL_ADMIN_PASSWORD IDEAS_DB_PASSWORD REVIEW_DB_PASSWORD ORGANIZER_KEY TYPESAFE_API_KEY COACH_API_KEY; do gh secret set $s; done   # pasted when prompted
 gh variable set PREFIX --body $PREFIX; gh variable set RESOURCE_GROUP --body $RG; gh variable set UI_STORAGE --body $STORAGE
 
-# 7. Read access for grading
+# 8. Read access for grading
 for p in amartini@faculty.ie.edu bserra@faculty.ie.edu; do az role assignment create --assignee $p --role Reader --scope "$(az group show -n $RG --query id -o tsv)"; done
 ```
+
+On 24 November the resources from steps 2, 3 and 5 moved into `infra/main.bicep`. Before the pipeline started applying it, this showed that the template matches them:
+
+```bash
+az deployment group what-if -g $RG -f infra/main.bicep -p imageTag=<deployed sha> sqlAdminPassword=... ideasDatabaseUrl=... reviewDatabaseUrl=... organizerKey=... typesafeApiKey=... coachApiKey=...
+```
+
+To rebuild from nothing: steps 1, 6, 7 and 8, then push to `main`. The workflow applies the template and publishes the UI, but its health check fails until step 4 has created the database users; after step 4, re-run the failed job.
 
 Logs: `az containerapp logs show -n kpetrovski-ieu2024-ideas -g rg-kpetrovski-ieu2024 --type console --follow`.
 
@@ -198,6 +224,7 @@ Labels, in order: safety risk above 0.5 is UNPROVEN; a dodged question is PARTIA
 - `services/review/review/`: `api.py`, `service.py` (rounds, gates, serving), `logic.py` (label, gate and session rules), `jev.py`, `coach.py` (Chef, with time budgets), `store.py`, `db.py`, `migrations.py`, `observe.py`, `cors.py`.
 - `services/*/Dockerfile`, `requirements.in` (direct dependencies) and `requirements.txt` (locked), `openapi.yaml`, `migrations/`, `tests/`.
 - `ui/`: static HTML, CSS and JavaScript; `ui/config.js` holds the service URLs (overwritten at deploy).
+- `infra/main.bicep`: every Azure resource the pipeline applies.
 - `db/init.sql`, `docker-compose.yml`, `.github/workflows/`, `system.yaml`, `system.schema.json`, `ADR.md`, `AI_USAGE.md`.
 
 ### Tables

@@ -67,6 +67,8 @@ jobs:
       - run: pip install check-jsonschema==0.39.0 openapi-spec-validator==0.9.0
       - run: check-jsonschema --schemafile system.schema.json system.yaml
       - run: openapi-spec-validator services/ideas/openapi.yaml services/review/openapi.yaml
+      - name: Build and lint the Bicep (warnings fail)
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null && az bicep lint --file infra/main.bicep --diagnostics-format sarif | jq -e '[.runs[].results[]] | length == 0'
 
   test:
     name: test (${{ matrix.service }})
