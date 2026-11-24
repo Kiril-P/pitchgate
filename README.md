@@ -107,7 +107,14 @@ Each service's schema is the numbered SQL files in `services/<name>/migrations/`
 
 ## How deployment works
 
-Every change reaches `main` through a pull request; `main` requires the seven CI checks. On every push and pull request, `.github/workflows/ci.yml` runs ruff, each service's tests against a throwaway SQL Server (failing under 70% coverage), the cross-seam suite, `system.yaml` and OpenAPI validation, and both image builds. On a push to `main`, `.github/workflows/deploy.yml`:
+Every change reaches `main` through a pull request; `main` requires all ten CI checks. On every push and pull request, `.github/workflows/ci.yml` runs ruff, each service's tests against a throwaway SQL Server (failing under 70% coverage), the cross-seam suite, `system.yaml` and OpenAPI validation, both image builds, and four security checks:
+
+- **SAST:** Bandit over both services' code; any finding fails the run.
+- **SCA:** pip-audit over both locked `requirements.txt` files; any known vulnerability fails the run.
+- **Image scan:** Trivy over each built image, failing on any HIGH or CRITICAL vulnerability that has a fix (OS packages included).
+- **Secrets:** gitleaks over every commit in the history.
+
+Dependabot opens weekly pull requests for the Python packages, the base images and the GitHub Actions, and each one passes through the same checks. On a push to `main`, `.github/workflows/deploy.yml`:
 
 1. calls `ci.yml`, so nothing deploys unless CI passed on that commit;
 2. pushes `ghcr.io/kiril-p/pitchgate-ideas:<sha>` and `pitchgate-review:<sha>` (public packages, `provenance: false`);

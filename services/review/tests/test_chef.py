@@ -308,3 +308,8 @@ def test_a_round_and_a_fact_search_fit_inside_the_ideas_services_30_second_call(
 
     assert jev.TIMEOUT + coach.CHEF_BUDGET_S < 30
     assert coach.SEARCH_BUDGET_S + coach.CHEF_BUDGET_S < 30
+
+
+def test_chef_never_opens_a_url_that_is_not_http_or_https():
+    with pytest.raises(ChefUnavailable):
+        coach._send("file:///etc/passwd", {}, {}, 1)

@@ -26,7 +26,8 @@ def http_transport(method, url, body, timeout):
         url, data=data, method=method, headers={"Content-Type": "application/json", "Accept": "application/json"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        # ReviewClient only accepts http(s) base URLs, so urlopen never sees file:// or a custom scheme.
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
             return response.status, _parse(response.read())
     except urllib.error.HTTPError as error:
         return error.code, _parse(error.read())
@@ -43,6 +44,8 @@ class ReviewClient:
     """Every call has a timeout. Calls that wait on Jev or Chef get the slow one."""
 
     def __init__(self, base_url, timeout, slow_timeout, transport=None):
+        if not base_url.startswith(("http://", "https://")):
+            raise ValueError("REVIEW_URL must start with http:// or https://")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.slow_timeout = slow_timeout

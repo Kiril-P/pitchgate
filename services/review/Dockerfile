@@ -7,6 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Debian publishes security fixes before the Python base image is rebuilt; the image scan in CI fails on any fixable HIGH or CRITICAL.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 
 COPY requirements.txt .

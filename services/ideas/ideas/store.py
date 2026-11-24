@@ -20,8 +20,8 @@ from ideas.logic import (
     walk_branch,
 )
 
-COLUMNS = "id, idea_id, parent_id, kind, one_liner, story, answer, created_at"
-IDEA_COLUMNS = "id, display_name, status, station, token, tone, level, pivot_of, shared, created_at, updated_at"
+SELECT_IDEA = "SELECT id, display_name, status, station, token, tone, level, pivot_of, shared, created_at, updated_at FROM ideas"
+SELECT_REVISIONS = "SELECT id, idea_id, parent_id, kind, one_liner, story, answer, created_at FROM revisions"
 
 
 def new_token():
@@ -168,7 +168,7 @@ def delete_idea(connection, idea_id):
 
 def get_idea(connection, idea_id):
     idea = connection.execute(
-        "SELECT " + IDEA_COLUMNS + " FROM ideas WHERE id = %s",
+        SELECT_IDEA + " WHERE id = %s",
         (idea_id,),
     ).fetchone()
     if idea is None:
@@ -198,9 +198,9 @@ def get_branch(connection, revision_id):
 def list_ideas(connection):
     """Every idea with its current branch summary and every timestamp the founder
     wrote something, for boards and the organizer view."""
-    ideas = connection.execute("SELECT " + IDEA_COLUMNS + " FROM ideas ORDER BY updated_at DESC, id DESC").fetchall()
+    ideas = connection.execute(SELECT_IDEA + " ORDER BY updated_at DESC, id DESC").fetchall()
     by_idea = {}
-    for row in connection.execute("SELECT " + COLUMNS + " FROM revisions ORDER BY id").fetchall():
+    for row in connection.execute(SELECT_REVISIONS + " ORDER BY id").fetchall():
         by_idea.setdefault(row["idea_id"], []).append(_revision(row))
     logs = {}
     for row in connection.execute("SELECT idea_id, kind, created_at FROM evidence ORDER BY id").fetchall():
@@ -250,7 +250,7 @@ def _status_of(connection, idea_id):
 
 def _revisions_for(connection, idea_id):
     rows = connection.execute(
-        "SELECT " + COLUMNS + " FROM revisions WHERE idea_id = %s ORDER BY id",
+        SELECT_REVISIONS + " WHERE idea_id = %s ORDER BY id",
         (idea_id,),
     ).fetchall()
     return [_revision(row) for row in rows]

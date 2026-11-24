@@ -162,7 +162,8 @@ def _post(body, api_key):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        # The URL is the fixed https address above.
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # nosec B310
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         log.warning("Jev request failed: HTTP %s %s", error.code, error.read()[:300])
