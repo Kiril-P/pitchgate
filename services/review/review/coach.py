@@ -421,6 +421,9 @@ def _post(url, body, api_key):
 
 
 def _send(url, body, headers, timeout):
+    if not url.startswith(("http://", "https://")):
+        log.warning("Chef URL must start with http:// or https://")
+        raise ChefUnavailable()
     request = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -428,7 +431,8 @@ def _send(url, body, headers, timeout):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        # _send refuses anything but http(s) above, so urlopen never sees file:// or a custom scheme.
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         log.warning("Chef request failed: HTTP %s %s", error.code, error.read()[:300])

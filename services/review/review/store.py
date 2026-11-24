@@ -157,11 +157,7 @@ def get_verdict(connection, revision_id):
 def verdicts_for(connection, revision_ids):
     if not revision_ids:
         return {}
-    marks = ",".join("%s" for _ in revision_ids)
-    rows = connection.execute(
-        "SELECT * FROM verdicts WHERE revision_id IN (" + marks + ")",
-        tuple(revision_ids),
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM verdicts WHERE revision_id IN %s", (tuple(revision_ids),)).fetchall()
     return {row["revision_id"]: _verdict(row) for row in rows}
 
 
@@ -186,11 +182,7 @@ def chef_for(connection, revision_ids):
     Bodies of the JSON_KINDS are stored as JSON and come back parsed."""
     if not revision_ids:
         return {}
-    marks = ",".join("%s" for _ in revision_ids)
-    rows = connection.execute(
-        "SELECT * FROM chef_messages WHERE revision_id IN (" + marks + ")",
-        tuple(revision_ids),
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM chef_messages WHERE revision_id IN %s", (tuple(revision_ids),)).fetchall()
     found = {}
     for row in rows:
         body = row["body"]
@@ -250,10 +242,10 @@ def forget(connection, idea_id, revision_ids):
     connection.execute("DELETE FROM gates WHERE idea_id = %s", (idea_id,))
     connection.execute("DELETE FROM jev_calls WHERE idea_id = %s", (idea_id,))
     if revision_ids:
-        marks = ",".join("%s" for _ in revision_ids)
-        connection.execute("DELETE FROM jev_calls WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
-        connection.execute("DELETE FROM chef_messages WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
-        connection.execute("DELETE FROM verdicts WHERE revision_id IN (" + marks + ")", tuple(revision_ids))
+        ids = (tuple(revision_ids),)
+        connection.execute("DELETE FROM jev_calls WHERE revision_id IN %s", ids)
+        connection.execute("DELETE FROM chef_messages WHERE revision_id IN %s", ids)
+        connection.execute("DELETE FROM verdicts WHERE revision_id IN %s", ids)
     connection.commit()
 
 

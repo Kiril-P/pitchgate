@@ -278,3 +278,10 @@ def test_config_defaults():
     assert load_config({"UI_ORIGIN": UI + "/"})["UI_ORIGIN"] == UI
     with pytest.raises(RuntimeError):
         create_app(config)
+
+
+def test_review_url_must_be_http_or_https():
+    from ideas.review_client import ReviewClient
+
+    with pytest.raises(ValueError):
+        ReviewClient("file:///etc/passwd", 5, 30)
