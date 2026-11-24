@@ -46,6 +46,18 @@ jobs:
       - run: pip install pip-audit==2.10.1
       - run: pip-audit -r services/ideas/requirements.txt -r services/review/requirements.txt
 
+  policy:
+    name: policy (checkov)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install checkov==3.4.9
+      - name: Bicep, Dockerfiles and workflows against Checkov's policies (accepted exceptions in .checkov.yaml)
+        run: checkov -d . --config-file .checkov.yaml
+
   secrets:
     name: secrets (gitleaks)
     runs-on: ubuntu-24.04

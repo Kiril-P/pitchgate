@@ -18,6 +18,12 @@ param registry string = 'ghcr.io/kiril-p'
 @description('Image tag both services run: the commit SHA being deployed.')
 param imageTag string
 
+@description('Microsoft Entra account made administrator of the SQL server, next to the SQL admin login.')
+param entraAdminLogin string = 'kpetrovski.ieu2024@student.ie.edu'
+
+@description('Object id of that Entra account.')
+param entraAdminObjectId string = '5f92ea8c-c6b5-4936-8096-8ed68a415936'
+
 @secure()
 @description('Password of the SQL server admin login, used only for the initial setup of the database users.')
 param sqlAdminPassword string
@@ -64,6 +70,18 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Enabled'
     version: '12.0'
+  }
+}
+
+// Microsoft Entra authentication next to the SQL logins; the services keep their own contained SQL users.
+resource sqlEntraAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: entraAdminLogin
+    sid: entraAdminObjectId
+    tenantId: subscription().tenantId
   }
 }
 
