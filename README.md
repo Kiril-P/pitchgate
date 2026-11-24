@@ -107,12 +107,13 @@ Each service's schema is the numbered SQL files in `services/<name>/migrations/`
 
 ## How deployment works
 
-Every change reaches `main` through a pull request; `main` requires all ten CI checks. On every push and pull request, `.github/workflows/ci.yml` runs ruff, each service's tests against a throwaway SQL Server (failing under 70% coverage), the cross-seam suite, `system.yaml` and OpenAPI validation, both image builds, and four security checks:
+Every change reaches `main` through a pull request; `main` requires all eleven CI checks. On every push and pull request, `.github/workflows/ci.yml` runs ruff, each service's tests against a throwaway SQL Server (failing under 70% coverage), the cross-seam suite, `system.yaml` and OpenAPI validation, both image builds, and five security checks:
 
 - **SAST:** Bandit over both services' code; any finding fails the run.
 - **SCA:** pip-audit over both locked `requirements.txt` files; any known vulnerability fails the run.
 - **Image scan:** Trivy over each built image, failing on any HIGH or CRITICAL vulnerability that has a fix (OS packages included).
 - **Secrets:** gitleaks over every commit in the history.
+- **Policy as code:** Checkov over `infra/main.bicep`, both Dockerfiles and the workflows. The few checks that fail on purpose (cost, or the public UI) are listed in `.checkov.yaml`, each with its reason; any other failure blocks the merge.
 
 Dependabot opens weekly pull requests for the Python packages, the base images and the GitHub Actions, and each one passes through the same checks. On a push to `main`, `.github/workflows/deploy.yml`:
 

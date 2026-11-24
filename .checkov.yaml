@@ -1,0 +1,32 @@
+# Policy-as-code scan of the Bicep, the Dockerfiles and the workflows (CI job "policy (checkov)").
+# Every skip below is a check that fails on purpose, with the reason; anything else that fails blocks the merge.
+framework:
+  - bicep
+  - dockerfile
+  - github_actions
+skip-path:
+  - .venv
+  - .venv-a2
+compact: true
+quiet: true
+skip-check:
+  # The UI is a public static website; denying public network access would take it offline.
+  - CKV_AZURE_35
+  # The UI is rebuilt from git on every deploy, so geo-replication would only add cost; the guide asks for Standard_LRS.
+  - CKV_AZURE_206
+  # Consumption Container Apps without a VNet reach the database over the server's public endpoint;
+  # a private endpoint and VNet are outside the allowance and not free. The firewall allows only Azure services.
+  - CKV_AZURE_113
+  # SQL auditing needs a storage account or Log Analytics workspace as its destination, outside the allowance.
+  - CKV_AZURE_23
+  - CKV_AZURE_24
+  # Threat detection and its alert emails are Microsoft Defender for SQL, which has a fixed monthly cost.
+  - CKV_AZURE_25
+  - CKV_AZURE_26
+  - CKV_AZURE_27
+  # The free serverless offer does not support zone redundancy.
+  - CKV_AZURE_229
+  # For Bicep this check passes only with no SQL admin login at all (Entra-only authentication), which would also
+  # disable the services' contained SQL users, and pymssql cannot sign in with Entra tokens. An Entra admin is set
+  # next to the SQL login instead (sqlEntraAdmin in infra/main.bicep).
+  - CKV2_AZURE_27
