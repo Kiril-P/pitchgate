@@ -1,100 +1,212 @@
 # Pitch Kitchen
 
-A single-process web app for a university venture lab. A student founder pitches an idea, or starts with none, Chef interviews them about what has already happened, and between sessions they find facts online and talk to real people. Every idea can export a starter pack: one Markdown file with the problem, the evidence and its sources, what to build first, and a CLAUDE.md and first prompt for Claude Code. The pack is a draft until the idea is served, which happens when real conversations back it, not when the pitch sounds good. Organizers see the whole cohort on one page: who is moving, who is stuck, and who has talked to real customers.
+A web app for a university venture lab. A student founder pitches an idea, or starts with none, Chef interviews them about what has already happened, and between sessions they find facts online and talk to real people. Jev scores every answer; the idea is served only when real conversations back it. Every idea can export a starter pack for Claude Code, and organizers see the whole cohort on one page.
 
-This repository is the Assignment 1 app. It runs as one process and stores data in SQLite. Ideas, review, and cohort are separate packages so they can be split later.
+**Live:** https://kpetrovskiieu2024ui.z28.web.core.windows.net (the first request after a quiet hour can take up to a minute while the services and their databases wake up; the page says so).
 
-## Run
+Assignment 2 split the Assignment 1 monolith along its ADR-2 seam into two services, each with its own container and its own SQL Server database, deployed to Azure by GitHub Actions:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python app.py
+```text
+browser ── static UI (ui/, Azure Storage static website)
+   │  HTTPS + CORS
+   ├──► ideas   (services/ideas)   what the founder writes   ──► ideas database
+   │       │ HTTP, 5 s / 30 s timeouts
+   │       ▼
+   └──► review  (services/review)  what the app says back    ──► review database
+                      └──► Jev (Typesafe) and Chef (Gemini)
 ```
 
-Open http://localhost:5000. On macOS, AirPlay Receiver often holds port 5000; run `PORT=5050 python app.py` instead.
+- **ideas** owns ideas, the revision tree of pitch and answers, logged conversations and facts, the starter pack Markdown, and the organizer view. The UI calls it for everything about an idea, and it calls review for every judgement (`ideas/flows.py`).
+- **review** owns Jev's verdicts and tasting gates, Chef's messages, the Jev call budget and Chef's prep suggestions. It stores the idea and revision ids ideas sends; no foreign key crosses the seam (ADR 7).
+- When review is down, ideas still saves a pitch and serves every idea page with the founder's own text and a notice; answers, logs and deletes are refused with a 503 and save nothing.
 
-The process binds to `0.0.0.0`. Configure it with environment variables. For local runs, copy `.env.example` to `.env` and fill in the keys; the file is git-ignored and optional. Variables set in the shell override it.
+The system is described for machines in `system.yaml` (schema: `system.schema.json`) and `services/*/openapi.yaml`. Decisions are in `ADR.md`; AI help is in `AI_USAGE.md`.
+
+## Run the whole system locally
+
+Needs Docker Desktop (on Apple Silicon, turn on "Use Rosetta for x86_64/amd64 emulation" for the SQL Server image).
+
+```bash
+cp .env.example .env        # fill in the three passwords; the API keys are optional
+docker compose up --build
+```
+
+- UI: http://localhost:8080 · ideas: http://localhost:8001 · review: http://localhost:8002 (`/health` on both)
+- `sql` runs SQL Server 2022; the one-off `db-init` runs `db/init.sql`, which creates the `ideas` and `review` databases and one login per service that can open only its own database. It is idempotent and runs on every `up`.
+- Without `TYPESAFE_API_KEY` verdicts stay PENDING; without `COACH_API_KEY` Chef pauses. Everything else works.
+- See partial failure: `docker compose stop review`, reload an idea page (founder's text plus "can't be loaded right now"), try to answer (503, nothing saved), then `docker compose start review`.
+
+## Run one service on its own
+
+Each service is a plain Flask app with its own `requirements.txt`. It needs a SQL Server database it may create tables in; `docker compose up -d sql db-init` gives you one.
+
+```bash
+cd services/review
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+export DATABASE_URL="mssql://review_app:<REVIEW_DB_PASSWORD>@localhost:1433/review"
+flask --app wsgi run --port 8002
+```
+
+For ideas, use `services/ideas`, its own login and database, and `REVIEW_URL=http://localhost:8002`. The compose file does not publish SQL Server's port; add `ports: ["1433:1433"]` to `sql` while you need it. Migrations run at startup either way.
+
+## Configuration
+
+Every variable each service reads, as in `system.yaml`. Secrets have no default; on Azure they come from GitHub Actions secrets and are stored as Container Apps secrets.
+
+**ideas**
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `5000` | Port the process listens on |
-| `DATA_DIR` | `data` | Directory for the SQLite file |
-| `TYPESAFE_API_KEY` | empty | Key for the Jev API. Without it, text saves and verdicts stay PENDING |
-| `JEV_BUDGET_PER_IDEA` | `15` | Most successful Jev calls one idea may make: two full sessions (pitch, 10 answers, a gate) plus a retry. Failed calls don't count; one text is tried at most 3 times |
-| `COACH_API_KEY` | empty | Key for Chef's model. Without it, the verdict shows and Chef's reply waits for a retry. Web fact search uses the same key with Gemini's own API and Google Search, so it only works with a Gemini key that has search quota (the free tier often has none); without it, Chef suggests what to look up instead |
+| `PORT` | `8000` | Port the service listens on |
+| `DATABASE_URL` | secret | `mssql://user:password@host:1433/database`, plus `?encrypt=require` on Azure |
+| `VERSION` | `dev` | Commit SHA reported by `/health`; set at image build time |
+| `DB_CONNECT_ATTEMPTS` | `8` | Connection attempts at startup while a paused database resumes (backoff 2 to 20 s) |
+| `REVIEW_URL` | `http://review:8000` | Base URL of the review service |
+| `REVIEW_TIMEOUT_S` | `5` | Timeout for calls to review that do not wait on Jev or Chef |
+| `REVIEW_SLOW_TIMEOUT_S` | `30` | Timeout for calls that wait on Jev or Chef (the schema's limit) |
+| `ORGANIZER_KEY` | secret | Key for the organizer view; unset turns it off |
+| `UI_ORIGIN` | empty | The only browser origin allowed by CORS |
+
+**review**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8000` | Port the service listens on |
+| `DATABASE_URL` | secret | Connection string of the review database |
+| `VERSION` | `dev` | Commit SHA reported by `/health` |
+| `DB_CONNECT_ATTEMPTS` | `8` | Connection attempts at startup |
+| `TYPESAFE_API_KEY` | secret | Jev; without it verdicts and gates stay PENDING |
+| `JEV_BUDGET_PER_IDEA` | `15` | Most successful Jev calls one idea may make |
+| `COACH_API_KEY` | secret | Chef's model (Gemini); without it Chef pauses |
 | `COACH_URL` | Gemini's OpenAI-compatible endpoint | Any OpenAI-compatible chat completions URL |
-| `COACH_MODEL` | `gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite` | Model Chef uses. A comma-separated list is tried in order when a model is busy (15 s timeout each) |
-| `ORGANIZER_KEY` | empty | Opens `/organizer?key=...`. Empty turns the organizer page off |
+| `COACH_MODEL` | `gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite` | Tried in order while the step's 16 s budget allows |
+| `UI_ORIGIN` | empty | The only browser origin allowed by CORS |
 
-The database file is `DATA_DIR/pitchkitchen.sqlite`. Startup creates the file and every table if missing, and migrates an older database in place (old KILL/FIX/SHIP labels become UNPROVEN/PARTIAL/PROVEN).
+## Tests and coverage
 
-## How it works
-
-1. **Prep.** The founder picks where they are starting: no idea yet, an idea, or already talked to customers. With no idea, they tell Chef about their week and Chef sparks three small problems from it, each with a story and a first fact to check. The founder writes a story and a one-liner ("We help [who] [do what] by [how]"). Chef can suggest three one-liners from the story. They pick Chef's tone (supportive, tough, or full Ramsay; only Ramsay swears), whether to share the idea on the cohort board, and consent to the text being sent to Gemini and Typesafe and read by organizers.
-2. **Grill.** Each answer is a new revision. Jev scores it, `pitchkitchen/review/logic.py` decides the label, and Chef asks the next Mom Test question first, then reacts in a sentence or two. Chef coaches beginners in plain words and turns "I don't know" into a small mission for the week; with founders who say they talked to customers, he expects names, dates, and numbers. A session is 5 answers. Any answer can be edited; the edit is saved as a sibling revision and re-scored.
-3. **Tasting.** After a session Chef writes homework: three kinds of people to talk to and three questions about their past behaviour. The founder logs each conversation (who, date, what they do and pay today, what they said) and can log facts: Chef searches the web with Google Search through Gemini, and only sentences Google ties to a source link are shown; the founder ticks the ones to keep, or adds a fact with its link by hand. If search is unavailable, Chef suggests four things to look up and the page turns each into a Google search link; the model gives no facts or links in that case. With 3 or more logs this session, one batched Jev call scores them at the gate. Passing opens the next 5-answer session.
-4. **Served.** A PROVEN verdict plus at least 3 logged conversations (facts don't count) can be served. Chef writes a pitch from the founder's own facts and three next steps.
-5. **Starter pack.** At any point Chef can write the plan part of a starter pack: problem, first customer, assumptions to test, 3 to 5 version-one features, user stories, screens, data model, stack, first tasks, and a first prompt for Claude Code. `pitchkitchen/pack.py` copies the evidence section straight from the logs, so a pack never cites a conversation that was not logged, and adds a CLAUDE.md. It downloads from `/i/<token>/starter-pack.md`, is marked Draft until the idea is served and Verified after, and the page says when it is out of date.
-
-Jev returns market need, feasibility, differentiation, and evidence (how much of the latest message is past fact) on a 0–3 scale, a safety-risk probability, and for answers whether the founder answered Chef's question. Market need judges the problem itself; how well the founder backs it up is the evidence score. The page shows bands (None, Weak, Solid, Strong), not decimals. The label is decided in this order:
-
-1. Safety risk above 0.5 is UNPROVEN.
-2. Answered probability under 0.5 is PARTIAL (dodged), and Chef asks again. A dodge never counts toward the bin, and an honest none, zero, or never counts as an answer.
-3. The three scores averaging under 1.2 is UNPROVEN.
-4. Any of the three scores under 2.0 is PARTIAL; the page names which ones and what to show next.
-5. Evidence under 2.0 is PARTIAL (mostly claims).
-6. Jev less than 60% sure every score is 2 or 3 is PARTIAL.
-7. Anything else is PROVEN.
-
-The tasting gate passes when evidence strength is at least 2.0 and the average of evidence strength, pain frequency, and willingness to pay is at least 1.5. It is sent back on safety risk above 0.5. A sent-back gate needs a new log before the next try. A beginner's first gate (no idea yet, or an idea without customers) is a starter gate: any three facts or conversations pass it unless they look unsafe, and Jev's bars still show how strong they were.
-
-Two UNPROVEN answers in a row inside a session bin the idea, but only after a passed tasting gate. In the first session nobody has talked to customers yet, so a weak idea finishes its five answers and goes to homework. A binned idea can be pivoted: the pitch form opens prefilled, and the new idea links back to the old one.
-
-**Privacy.** Every idea lives at `/i/<token>`, a random link. The home page lists only ideas created in this browser (their tokens are in a cookie) plus ideas their founders chose to share. There is no login; anyone holding a link can act on that idea.
-
-**Organizers.** `/organizer?key=ORGANIZER_KEY` shows ideas, founders, active this week, answers per idea, the share who talked to real people, the share of founders who came back on another day, a funnel from pitch to served, and a table with stuck ideas (7+ days idle) first.
-
-## Tests
+Tests run against a real SQL Server, never the network: Jev, Chef and web search are fakes. Point `TEST_SQL_URL` at a login that may create databases; the tests create and drop their own.
 
 ```bash
-pytest --cov=pitchkitchen --cov-report=term-missing
+docker run -d --name pk-sql --platform linux/amd64 -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=<password>" -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest
+export TEST_SQL_URL="mssql://sa:<password>@localhost:1433/master"
+
+cd services/ideas  && pytest --cov=ideas  --cov-fail-under=70     # 71 tests, 98%
+cd services/review && pytest --cov=review --cov-fail-under=70     # 87 tests, 96%
+pytest                                                            # from the root: cross-seam journeys and system description checks
+ruff check services tests
 ```
 
-The target is at least 70% on the core business logic. The last run was 138 tests passing at 97% total coverage. Tests never call the network: Jev, Chef, and the web search are replaced by fakes in `tests/fakes.py`.
+- `services/*/tests/`: each service's rules, store, migrations, API, health and request logs, and a check that every Flask route is in its OpenAPI document. Ideas' API tests replace review with `StubReview`, which can also time out, refuse or be down.
+- `tests/integration/test_journeys.py`: the Assignment 1 founder journeys with the real review app served on a local port and the real ideas app calling it over HTTP, each with its own database, plus one with review stopped.
+- `tests/integration/test_system_description.py` and `test_readme.py`: `system.yaml` lists exactly what the code reads, with the same defaults and timeouts; every call ideas makes is in review's OpenAPI document; this README keeps up with both.
 
-- `tests/test_ideas.py`: field and evidence checks, branch walking, sibling edits, tokens, pivots, storage and migration.
-- `tests/test_review.py`: verdict and gate rules, bands, Jev parsing, budget and retry cap, verdict and gate storage, label migration.
-- `tests/test_chef.py`: Chef's prompts per tone and level, sessions, homework, one-liner and spark suggestions, sourced web facts, the starter pack plan, served pitch, model fallback.
-- `tests/test_service.py`: one full round, homework, the tasting and starter gates, serving on conversations only, and storing a starter pack.
-- `tests/test_pack.py`: the starter pack Markdown, draft and verified.
-- `tests/test_loop.py`: whole journeys through the pages, including every ending, a beginner keeping web facts, and downloading a starter pack.
-- `tests/test_app.py`: routes, private links and the home page cookie, form errors, Prep suggestions.
-- `tests/test_cohort.py`: cohort metrics, stuck ideas, and the organizer key.
-- `tests/test_config.py`: environment variables and the optional `.env` file.
+## Migrations
+
+Each service's schema is the numbered SQL files in `services/<name>/migrations/`, applied in name order at startup and recorded in `schema_migrations`; a second start applies nothing. Each file runs in one transaction with its record, so a failing file changes nothing. To change the schema, add the next file (`003_…sql`); never edit one that has been applied. A line holding only `GO` splits a file into batches. `002_add_updated_at.sql` is the example of changing a table that already holds data: it adds `ideas.updated_at` and backfills it for every existing idea.
+
+## How deployment works
+
+Every change reaches `main` through a pull request; `main` requires the seven CI checks. On every push and pull request, `.github/workflows/ci.yml` runs ruff, each service's tests against a throwaway SQL Server (failing under 70% coverage), the cross-seam suite, `system.yaml` and OpenAPI validation, and both image builds. On a push to `main`, `.github/workflows/deploy.yml`:
+
+1. calls `ci.yml`, so nothing deploys unless CI passed on that commit;
+2. pushes `ghcr.io/kiril-p/pitchgate-ideas:<sha>` and `pitchgate-review:<sha>` (public packages, `provenance: false`);
+3. signs in to Azure as the managed identity `kpetrovski-ieu2024-github` over OpenID Connect (no password exists);
+4. sets each Container App's secrets from GitHub secrets and points it at the new image (`az containerapp secret set`, `az containerapp update`);
+5. waits until both `/health` endpoints report the new commit, then prints each new revision's startup log (migration lines) into the run;
+6. writes `ui/config.js` with both service URLs and uploads `ui/` to the storage account's `$web` container.
+
+GitHub secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `IDEAS_DB_PASSWORD`, `REVIEW_DB_PASSWORD`, `ORGANIZER_KEY`, `TYPESAFE_API_KEY`, `COACH_API_KEY`. Variables: `PREFIX`, `RESOURCE_GROUP`, `UI_STORAGE`.
+
+## Azure initial setup (done once; reproduce in bash)
+
+Everything is in `rg-kpetrovski-ieu2024` in `francecentral`; after this, only the pipeline changes anything. Passwords are generated locally and never written in the repository.
+
+```bash
+PREFIX=kpetrovski-ieu2024; RG=rg-$PREFIX; LOCATION=francecentral
+STORAGE=kpetrovskiieu2024ui; SQL_SERVER=$PREFIX-sql; ENVIRONMENT=$PREFIX-env; GH_REPO=Kiril-P/pitchgate
+
+# 1. Region (from the "Allowed resource deployment regions" policy) and providers
+az policy assignment list --query "[?displayName=='Allowed resource deployment regions'].parameters.listOfAllowedLocations.value"
+for p in Microsoft.App Microsoft.OperationalInsights Microsoft.Sql Microsoft.Storage Microsoft.ManagedIdentity; do az provider register -n $p; done
+az group create -n $RG -l $LOCATION
+
+# 2. The UI: a storage static website
+az storage account create -n $STORAGE -g $RG -l $LOCATION --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false
+az storage blob service-properties update --account-name $STORAGE --static-website --index-document index.html --auth-mode key
+
+# 3. SQL server and one free serverless database per service
+az sql server create -n $SQL_SERVER -g $RG -l $LOCATION --admin-user pkadmin --admin-password "$SQL_ADMIN_PASSWORD" --minimal-tls-version 1.2
+az sql server firewall-rule create -g $RG -s $SQL_SERVER -n AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
+for svc in ideas review; do
+  az sql db create -g $RG -s $SQL_SERVER -n $PREFIX-$svc-db --edition GeneralPurpose --family Gen5 --capacity 1 --min-capacity 0.5 \
+    --compute-model Serverless --backup-storage-redundancy Local --use-free-limit true --free-limit-exhaustion-behavior AutoPause
+done
+# One contained user per database, with the firewall open to my IP only while doing it. As pkadmin, in <svc>-db:
+#   CREATE USER [<svc>_app] WITH PASSWORD = '<password>';
+#   ALTER ROLE db_ddladmin ADD MEMBER [<svc>_app]; ALTER ROLE db_datareader ADD MEMBER [<svc>_app]; ALTER ROLE db_datawriter ADD MEMBER [<svc>_app];
+az sql server firewall-rule create -g $RG -s $SQL_SERVER -n Setup --start-ip-address "$MYIP" --end-ip-address "$MYIP"
+az sql server firewall-rule delete -g $RG -s $SQL_SERVER -n Setup
+
+# 4. Container Apps (Consumption, 0 to 1 replicas, no Log Analytics workspace; CORS is in the code, not the ingress)
+az containerapp env create -n $ENVIRONMENT -g $RG -l $LOCATION --logs-destination none
+for svc in review ideas; do
+  az containerapp create -n $PREFIX-$svc -g $RG --environment $ENVIRONMENT --image mcr.microsoft.com/k8se/quickstart:latest \
+    --ingress external --target-port 8000 --min-replicas 0 --max-replicas 1 --cpu 0.25 --memory 0.5Gi \
+    --env-vars UI_ORIGIN=https://kpetrovskiieu2024ui.z28.web.core.windows.net
+done
+
+# 5. The pipeline's identity: Contributor on this resource group only, trusted for main of this repository
+az identity create -n $PREFIX-github -g $RG
+az role assignment create --assignee-object-id "$(az identity show -n $PREFIX-github -g $RG --query principalId -o tsv)" \
+  --assignee-principal-type ServicePrincipal --role Contributor --scope "$(az group show -n $RG --query id -o tsv)"
+az identity federated-credential create --identity-name $PREFIX-github -g $RG -n github-main \
+  --issuer https://token.actions.githubusercontent.com --subject "repo:${GH_REPO}:ref:refs/heads/main" --audiences api://AzureADTokenExchange
+az identity federated-credential create --identity-name $PREFIX-github -g $RG -n github-main-ids \
+  --issuer https://token.actions.githubusercontent.com --subject "repo:Kiril-P@194789402/pitchgate@1392491780:ref:refs/heads/main" --audiences api://AzureADTokenExchange
+
+# 6. GitHub secrets and variables (values from the steps above; never committed)
+for s in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID IDEAS_DB_PASSWORD REVIEW_DB_PASSWORD ORGANIZER_KEY TYPESAFE_API_KEY COACH_API_KEY; do gh secret set $s; done
+gh variable set PREFIX --body $PREFIX; gh variable set RESOURCE_GROUP --body $RG; gh variable set UI_STORAGE --body $STORAGE
+
+# 7. Read access for grading
+for p in amartini@faculty.ie.edu bserra@faculty.ie.edu; do az role assignment create --assignee $p --role Reader --scope "$(az group show -n $RG --query id -o tsv)"; done
+```
+
+Logs: `az containerapp logs show -n kpetrovski-ieu2024-ideas -g rg-kpetrovski-ieu2024 --type console --follow`.
+
+## How the product works
+
+1. **Prep.** The founder picks where they start: no idea yet, an idea, or already talked to customers. With no idea, Chef sparks three small problems from their week. They write a story and a one-liner ("We help [who] [do what] by [how]"), pick Chef's tone (supportive, tough, or full Ramsay), and consent to the text going to Gemini and Typesafe and to organizers.
+2. **Grill.** Each answer is a new revision. Jev scores it, review's `logic.py` decides the label, and Chef asks the next Mom Test question. A session is 5 answers. Any answer can be edited; the edit is a sibling revision and is re-scored.
+3. **Tasting.** After a session Chef writes homework. The founder logs conversations and facts (web search through Gemini, only sentences Google ties to a source). With 3 or more logs this session, one Jev call scores them at the gate; passing opens the next session. A beginner's first gate passes on any three facts or conversations unless they look unsafe.
+4. **Served.** A PROVEN verdict plus at least 3 logged conversations (facts don't count) can be served; Chef writes a pitch from the founder's facts and three next steps.
+5. **Starter pack.** Chef plans the build; ideas copies the evidence section straight from the logs, so a pack never cites something that was not logged. It is a Draft until the idea is served.
+
+Labels, in order: safety risk above 0.5 is UNPROVEN; a dodged question is PARTIAL and asked again; the three scores averaging under 1.2 is UNPROVEN; any score under 2.0, evidence under 2.0, or Jev less than 60% sure is PARTIAL; anything else is PROVEN. Two UNPROVEN answers in a row inside a session bin the idea, but only after a passed gate; a binned idea can be pivoted. Every idea lives at a private token; the home page lists only tokens this browser keeps plus ideas shared on the cohort board. There is no login (ADR 5).
 
 ## Layout
 
-- `app.py` starts the process.
-- `pitchkitchen/config.py` reads environment variables. `pitchkitchen/db.py` opens SQLite and creates the tables.
-- `pitchkitchen/ideas/` owns everything the founder wrote: ideas, revisions, and evidence logs. `logic.py` checks fields and walks a branch. `store.py` writes them.
-- `pitchkitchen/review/` owns everything the app says back. `logic.py` holds the label, gate, and session rules. `jev.py` calls the scoring model. `coach.py` calls Chef's model. `service.py` runs a round, a gate, and serving. `store.py` writes verdicts, gates, Chef's messages, and the Jev call log.
-- `pitchkitchen/cohort/` is pure: it turns plain dicts into organizer rows and metrics. It has no tables.
-- `pitchkitchen/pack.py` is pure too: it turns an idea's logs and Chef's plan into the starter pack Markdown.
-- `pitchkitchen/pages.py` (founder pages) and `pitchkitchen/organizer.py` (organizer page) are the only places the domains are called together.
-- `pitchkitchen/templates/` and `pitchkitchen/static/` are the frontend. `chat.js` locks a form while Chef works and shows the answer before the reply arrives. `kitchen.js` runs the small interactions: local times, counters, saved drafts, copy buttons, the delete dialog, keyboard shortcuts, and sorting the organizer table. htmx and the Bricolage Grotesque font (SIL Open Font License) are vendored, so the pages load nothing from the internet.
-- `ADR.md` records design decisions.
-- `AI_USAGE.md` records meaningful AI help.
+- `services/ideas/ideas/`: `api.py` (routes), `flows.py` (everything done together with review), `review_client.py` (HTTP with timeouts), `logic.py` and `store.py` (the domain), `view.py` (the page JSON), `pack.py` and `cohort.py` (pure), `db.py`, `migrations.py`, `observe.py` (health, logs), `cors.py`.
+- `services/review/review/`: `api.py`, `service.py` (rounds, gates, serving), `logic.py` (label, gate and session rules), `jev.py`, `coach.py` (Chef, with time budgets), `store.py`, `db.py`, `migrations.py`, `observe.py`, `cors.py`.
+- `services/*/Dockerfile`, `requirements.in` (direct dependencies) and `requirements.txt` (locked), `openapi.yaml`, `migrations/`, `tests/`.
+- `ui/`: static HTML, CSS and JavaScript; `ui/config.js` holds the service URLs (overwritten at deploy).
+- `db/init.sql`, `docker-compose.yml`, `.github/workflows/`, `system.yaml`, `system.schema.json`, `ADR.md`, `AI_USAGE.md`.
 
 ### Tables
 
-| Domain | Table | Columns |
+| Service | Table | Columns |
 |---|---|---|
-| ideas | `ideas` | id, display_name, status, station, token, tone, level (new, idea, tested), pivot_of, shared, consent_at, created_at |
+| ideas | `ideas` | id, display_name, status, station, token, tone, level, pivot_of, shared, consent_at, created_at, updated_at |
 | ideas | `revisions` | id, idea_id, parent_id, kind, one_liner, story, answer, created_at |
 | ideas | `evidence` | id, idea_id, session, kind (conversation, fact), who, role, spoken_on, today_they, paid, quote, source, created_at |
 | review | `verdicts` | id, revision_id, market_need, feasibility, differentiation, safety_risk, confidence, evidence, answered, label, rule, created_at |
 | review | `gates` | id, idea_id, session, last_evidence_id, evidence_strength, pain_frequency, willingness_to_pay, safety_risk, label, rule, created_at |
-| review | `chef_messages` | id, revision_id, kind (turn, polished, homework, next_steps, starter_pack), body, question, created_at |
+| review | `chef_messages` | id, revision_id, kind, body, question, created_at |
 | review | `jev_calls` | id, idea_id, revision_id, purpose (verdict, gate), ok, created_at |
+
+Both databases also have `schema_migrations` (version, applied_at). `idea_id` and `revision_id` in review are plain integers that ideas hands over.
+
+## Secret incidents
+
+None. No credential has been committed to this repository or its history. If one ever is, it is revoked or rotated within 24 hours, the GitHub secret is updated, and the incident is recorded here (what leaked, when, what was done).
