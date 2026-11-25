@@ -1,17 +1,28 @@
 version: 2
 updates:
+  # One pull request for both services: CI installs both services' requirements together for the cross-seam
+  # suite, so bumping a package in one service only would fail with conflicting versions.
   - package-ecosystem: pip
-    directory: /services/ideas
+    directories: [/services/ideas, /services/review]
     schedule: { interval: weekly }
-  - package-ecosystem: pip
-    directory: /services/review
-    schedule: { interval: weekly }
+    groups:
+      python-packages:
+        patterns: ["*"]
+
+  # Only patch releases of the base image: a Python minor or major upgrade is its own tested change.
   - package-ecosystem: docker
-    directory: /services/ideas
+    directories: [/services/ideas, /services/review]
     schedule: { interval: weekly }
-  - package-ecosystem: docker
-    directory: /services/review
-    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
+    groups:
+      base-image:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]
